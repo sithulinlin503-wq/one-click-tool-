@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oneclickrecap Blogspot Tool — Phone Render (static, no server)</title>
+<style>
+  body{font-family:system-ui,-apple-system,"Noto Sans Myanmar",sans-serif;margin:16px auto;max-width:720px;padding:0 12px;color:#111;line-height:1.5}
+  h1{font-size:20px} h2{font-size:16px;margin-top:24px}
+  .warn{border:2px solid #b45309;background:#fff7ed;padding:10px 12px;border-radius:8px}
+  .box{border:1px solid #ccc;border-radius:8px;padding:12px;margin:10px 0}
+  label{display:block;margin:8px 0} input,select,textarea{width:100%;padding:8px;box-sizing:border-box}
+  input[type=checkbox]{width:auto} input[type=range]{width:100%}
+  button{padding:10px 16px;margin:6px 6px 6px 0;font-size:16px}
+  #log{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:8px;font-size:13px;max-height:300px;overflow:auto}
+  #progress{font-size:18px;font-weight:bold}
+  video,canvas{max-width:100%;background:#000}
+  #previewCanvas{touch-action:none;cursor:move}
+  .small{font-size:13px;color:#444}
+</style>
+</head>
+<body>
+<h1>📱 Oneclickrecap — Blogspot Tool (phone render)</h1>
+<p class="small"><b>Version: blogspot-v1, 2026-10-28.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser.</p>
+<p class="small"><b>Blogspot truth, read first:</b> Blogspot hosts static files only. This page CANNOT download a link (YouTube/TikTok block browser downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server here), and does NOT call any VM (the VM tunnel is blocked). <b>Input is a local video file from this phone.</b> Narration script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only.</p>
+<p id="audioModeNote" class="small"></p>
+<p class="small">Workflow on this page, in order: <b>1</b> choose a local video file → <b>2</b> write/paste Burmese narration, auto-split into timed segments, edit them → <b>3</b> (optional) Gemini script / Gemini TTS with your own key → <b>4</b> choose narration audio (Gemini TTS / uploaded audio / original / silent) → <b>5</b> drag blur + subtitle on the Preview at the top, set font → <b>6</b> Start render → download the MP4. Keep this page open and on screen during render.</p>
+
+<div class="warn">
+<b>⚠️ Keep this page open and on screen. Do not switch apps or lock the phone.</b><br>
+The browser may throttle or stop the render in the background — exactly like DeepClip warns.
+Start with a <b>short clip (30 seconds or less) first</b>, then try longer ones.<br>
+Battery / heat warning: hardware encoding uses the phone's encoder and will warm the phone.
+This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee the browser keeps rendering if you leave the page.
+</div>
+
+<div class="box">
+<h2>Preview — အပေါ်ဆုံး (ချိန်တိုင်း ဒီမှာ ချက်ချင်း မြင်ရမယ်)</h2>
+<canvas id="previewCanvas"></canvas>
+<p class="small"><b>Blur box + စာတန်းကို လက်နဲ့ ဆွဲ၍ ရွှေ့နိုင်တယ်:</b> Preview ပေါ်က blur box ထဲကို ထိပြီး ဆွဲပါ (blur position), box ရဲ့ အောက်ညာထောင့်ကို ဆွဲရင် blur size။ <b>မြန်မာစာတန်း ပေါ်ကို ထိပြီး ဆွဲရင် စာတန်း position ပြောင်းမယ်</b> (အလိုအလျောက် Custom position ဖြစ်သွားမယ်, subY % ပြောင်းမယ်)။ Font အကြီးအသေးကို အောက်က slider နဲ့ လက်နဲ့ ဆွဲချိန်ပါ, preview မှာ ချက်ချင်း ပေါ်မယ်။ ဆွဲပြီးမှ Start render နှိပ်ပါ။ အောက်က setting တွေပြောင်းတိုင်း preview ဒီအပေါ်မှာ ချက်ချင်း ပြောင်းတယ်, scroll ဆင်းကြည့်စရာ မလိုဘူး။</p>
+<p class="small">Preview shows the first frame with blur + subtitle applied, after you choose a file. It does not prove the full render. The red outline on the preview is only a drag guide — it is NOT burned into the rendered video.</p>
+</div>
+
+<div class="box">
+<h2>1. Source video (LOCAL FILE ONLY — link input does NOT work on Blogspot)</h2>
+
+<label>Choose video file (from phone storage — a file you already have, e.g. downloaded via the Telegram bot or another app)
+<input type="file" id="fileInput" accept="video/*"></label>
+<p class="small">Link paste does NOT work here: browsers cannot download YouTube/TikTok videos (CORS/DRM), and there is no server to run yt-dlp. If you only have a link, download it first with the Telegram bot, then choose that file here.</p>
+<video id="srcVideo" controls playsinline muted></video>
+<p id="srcInfo" class="small">No file chosen yet.</p>
+</div>
+
+<div class="box">
+<h2>2. Narration script (Burmese, Unicode — you review/edit before render)</h2>
+<label>Narration script — type or paste the full Burmese narration here (Unicode, never Zawgyi)
+<textarea id="scriptText" rows="6">ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်</textarea></label>
+<label>Chars per cue line <input type="number" id="capChars" value="40" min="20" max="80" step="5"></label>
+<label>Words per cue line <input type="number" id="capWords" value="4" min="3" max="12" step="1"></label>
+<p class="small">Splitting rule (same as the bot): split by sentence/phrase first (။ ? !), then by words — whichever fills first cuts the cue: 40 chars OR 4 words. Chars is the main line-length control, Words is secondary.</p>
+<button id="autoSplitBtn">✂️ Auto-split into timed segments</button>
+<p id="segInfo" class="small">No segments yet — press Auto-split after choosing a video (times are distributed over the video duration, proportional to character count).</p>
+<label>Segments (one per line, editable — format: start-end | text). Edit, then press Apply.
+<textarea id="segmentsText" rows="6" placeholder="0.0-4.5 | ကျွန်တော်တို့ အပေါ်ထပ်က"></textarea></label>
+<button id="applySegBtn">✅ Apply segment edits</button>
+<p class="small"><b>Timing is an approximation, not per-segment cuts:</b> segment times are proportional to character count over the narration/video duration (global-speed style). If narration audio is longer than the video, the video plays slower (clamped 0.5–2.5×) so the narration fits — the same simplification as website v1. Subtitles during render follow the segment list, one cue line at a time, never a whole paragraph.</p>
+</div>
+
+<div class="box">
+<details>
+<summary><b>3. Optional Gemini (your OWN key only — collapsed, optional)</b></summary>
+<p class="small">No key is built into this page. If you use Gemini, type YOUR OWN free AI Studio key below. It is stored ONLY in this phone browser's localStorage, sent ONLY directly from this browser to Google's Gemini API, never to the assistant, never to any VM. Delete it any time with the button below. Without a key, skip this whole section — sections 1, 2, 4, 5, 6 work without Gemini.</p>
+<label>Gemini API key (password field)
+<input type="password" id="geminiKey" placeholder="Paste your own AI Studio key here"></label>
+<button id="saveKeyBtn">💾 Save key on this phone only</button>
+<button id="delKeyBtn">🗑️ Delete key from this phone</button>
+<p id="keyInfo" class="small">No key saved.</p>
+<label>Transcript to turn into a Burmese script (paste source transcript / notes here)
+<textarea id="transcriptText" rows="4" placeholder="Paste the video transcript or notes here…"></textarea></label>
+<button id="geminiScriptBtn">✍️ Generate Burmese script from transcript (Gemini)</button>
+<p class="small">Result goes into section 2's script editor for YOUR review/edit before render (human-in-the-loop, same rule as the bot). Nothing is rendered automatically from Gemini output.</p>
+<button id="geminiTtsBtn">🎙️ Gemini TTS narration from section 2 script</button>
+<p id="ttsInfo" class="small">No Gemini TTS audio yet. TTS calls the model once per ~600-char chunk (sentence boundaries), joins the PCM into one WAV in this browser (24 kHz mono). On ANY failure it falls back to original-audio mode and logs the error — it never uses a shared pool key and never fakes audio.</p>
+</details>
+</div>
+
+<div class="box">
+<h2>4. Narration audio for render</h2>
+<audio id="narrAudio" preload="auto"></audio>
+<label>Upload narration audio (optional — e.g. a voice recording made on this phone)
+<input type="file" id="audioFile" accept="audio/*"></label>
+<p id="narrInfo" class="small">No narration audio selected. Audio mode in section 5 decides what is used: Gemini TTS / uploaded audio / original video audio / silent.</p>
+<p class="small">Note: one MediaElementSource per audio element per page load — if you already rendered with narration/uploaded audio once on this page, reload the page before rendering with a different narration audio.</p>
+</div>
+
+<div class="box">
+<h2>5. Settings</h2>
+<label>Output ratio
+<select id="ratio"><option value="Original">Original (source ratio, long side ≤720)</option><option value="9:16">9:16 (720×1280, cover crop)</option></select></label>
+<label>Video speed
+<select id="speed"><option value="1">1.0×</option><option value="1.25">1.25×</option></select></label>
+<label>Audio mode
+<select id="audioMode"><option value="original" selected>Original video audio — MediaRecorder, WITH SOUND (works without any key)</option><option value="gemini">Gemini TTS narration — MediaRecorder, narration audio, original muted (needs section 3 TTS first)</option><option value="uploaded">Uploaded audio — MediaRecorder, your uploaded file, original muted (needs section 4 file)</option><option value="silent">Silent — WebCodecs video only, fastest, NO SOUND (proven 0.99×)</option></select></label>
+<p class="small">Audio modes use MediaRecorder with the canvas video track + a Web Audio track (Gemini TTS / uploaded file / original video). It may be slower and less frame-accurate than WebCodecs. During an audio-mode render the sound may play aloud — lower the phone speaker volume (capture is internal, so speaker volume does not mute the recording). If the output is still silent, report the log line "Audio track:" — that tells whether an audio track was found.</p>
+<p class="small">Speed here uses the browser playback rate and presented frames, so it is approximate, not frame-accurate like the server pipeline's per-segment speed change. The final summary reports the actual output duration, so you can see the real effect.</p>
+
+<h3>Blur box (bot defaults)</h3>
+<label><input type="checkbox" id="blurOn"> Blur box ON (default in this prototype: ON, so you can see it; bot default is OFF)</label>
+<label>Blur x % <input type="number" id="blurX" value="34.9" min="0" max="90" step="0.1"></label>
+<label>Blur y % <input type="number" id="blurY" value="69.0" min="0" max="97" step="0.1"></label>
+<label>Blur width % <input type="number" id="blurW" value="30.2" min="10" max="100" step="0.1"></label>
+<label>Blur height % <input type="number" id="blurH" value="9.7" min="3" max="30" step="0.1"></label>
+<label>Blur intensity (0–30, DeepClip-style number; canvas blur ≈ intensity px, Gaussian approximation, NOT ffmpeg boxblur)
+<input type="range" id="blurInt" min="0" max="30" value="15" step="1"> <span id="blurIntVal">15</span></label>
+<label><input type="checkbox" id="fullWidth"> Full-width band (blur width = 100%, opt-in only — can cover faces on close-ups, check the preview)</label>
+
+<h3>Subtitle style (DeepClip style)</h3>
+<label>Text colour
+<select id="textColor"><option value="#FFFF00">Yellow</option><option value="#FFFFFF" selected>White (example-video style)</option><option value="#00FFFF">Cyan</option><option value="#FF69B4">Pink</option><option value="#00FF00">Green</option><option value="#FFA500">Orange</option></select></label>
+<label>Outline colour
+<select id="outlineColor"><option value="#000000" selected>Black</option><option value="#FFFFFF">White</option></select></label>
+<label>Outline width (px) <input type="number" id="outlineW" value="2" min="1" max="5" step="1"></label>
+<label>Font size (preview units, 12–28; scaled to canvas: size × canvasH / 360)
+<input type="number" id="fontSize" value="15" min="12" max="28" step="1"></label>
+<label>Font size — လက်နဲ့ ဆွဲချိန်ပါ (slider, preview မှာ ချက်ချင်း ပေါ်မယ်)
+<input type="range" id="fontSizeRange" min="12" max="28" value="15" step="1"> <span id="fontSizeRangeVal">15</span></label>
+<label>Subtitle position
+<select id="subPos"><option value="Bottom">Bottom</option><option value="Middle">Middle</option><option value="Custom" selected>Custom</option></select></label>
+<label>Custom vertical position % (used only when position = Custom)
+<input type="number" id="subY" value="67" min="0" max="95" step="1"></label>
+<label>Caption width % <input type="number" id="capW" value="88" min="50" max="100" step="1"></label>
+</div>
+
+<div class="box">
+<h2>6. Render</h2>
+<button id="renderBtn">▶ Start render</button>
+<button id="cancelBtn" disabled>Cancel</button>
+<p id="progress">Not started.</p>
+<p id="summary" class="small"></p>
+<p><a id="downloadLink" style="display:none">⬇ Download rendered video</a></p>
+<p class="small">Encoder path used will be shown in the log below. If WebCodecs is unavailable, the fallback is MediaRecorder from canvas.captureStream(). The download filename/extension matches the actual container: .mp4 only if the file is actually MP4, otherwise .webm (or .h264 if muxing fails).</p>
+</div>
+
+<h2>Log</h2>
+<pre id="log"></pre>
+
+<script>
+"use strict";
+// __MUXER_START__
+// Minimal MP4 muxer for a single H.264 video track, no audio.
+// Input: samples = [{data: Uint8Array (AVCC length-prefixed NALs), key: bool, duration: number in timescale units}]
+// Returns: Uint8Array MP4, or throws. Timescale = 30000, fps is used only by the caller for durations.
+function mp4Box(type, payloads){
+  var size = 8; payloads.forEach(function(p){ size += p.byteLength; });
+  var out = new Uint8Array(size); var view = new DataView(out.buffer);
+  view.setUint32(0, size);
+  for (var i=0;i<4;i++) out[4+i] = type.charCodeAt(i);
+  var off = 8; payloads.forEach(function(p){ out.set(p, off); off += p.byteLength; });
+  return out;
+}
+function mp4U32(v){ var a=new Uint8Array(4); new DataView(a.buffer).setUint32(0, v>>>0); return a; }
+function mp4U16(v){ var a=new Uint8Array(2); new DataView(a.buffer).setUint16(0, v); return a; }
+function mp4U8(v){ return new Uint8Array([v & 255]); }
+function mp4Str(s){ var a=new Uint8Array(s.length); for(var i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
+function concatBytes(list){ var n=0; list.forEach(function(p){n+=p.byteLength;}); var o=new Uint8Array(n),off=0; list.forEach(function(p){o.set(p,off);off+=p.byteLength;}); return o; }
+// Parse SPS/PPS from an Annex-B stream, or from AVCC description bytes (avcC box payload).
+function parseSpsPpsFromAnnexB(data){
+  var units=[], start=-1;
+  for (var i=0;i+3<data.length;i++){
+    if (data[i]===0 && data[i+1]===0 && ((data[i+2]===1) || (data[i+2]===0 && data[i+3]===1))){
+      if (start>=0) units.push(data.slice(start, i));
+      start = (data[i+2]===1) ? i+3 : i+4; i = start-1;
+    }
+  }
+  if (start>=0) units.push(data.slice(start));
+  var sps=null, pps=null;
+  units.forEach(function(u){ if(!u.length) return; var t=u[0]&31; if(t===7 && !sps) sps=u; if(t===8 && !pps) pps=u; });
+  return {sps:sps, pps:pps, units:units};
+}
+function annexBToAvcc(data){
+  var parsed = parseSpsPpsFromAnnexB(data); var parts=[];
+  parsed.units.forEach(function(u){ if(!u.length) return; parts.push(mp4U32(u.length)); parts.push(u); });
+  return concatBytes(parts);
+}
+function isAnnexB(data){ return data.length>=4 && data[0]===0 && data[1]===0 && (data[2]===1 || (data[2]===0 && data[3]===1)); }
+// Parse SPS/PPS from a WebCodecs decoderConfig.description (avcC box payload).
+// Layout: [1, profile, compat, level, 0xFF, 0xE1, spsLen(2), SPS, numPPS(1), ppsLen(2), PPS]
+function parseAvccDescription(desc){
+  try{
+    if (!desc || desc.length < 8) return {sps:null, pps:null};
+    var spsLen = (desc[6]<<8) | desc[7];
+    if (8+spsLen > desc.length) return {sps:null, pps:null};
+    var sps = desc.slice(8, 8+spsLen);
+    var off = 8+spsLen;
+    if (off >= desc.length) return {sps:sps, pps:null};
+    var numPps = desc[off]; off += 1;
+    if (numPps < 1 || off+2 > desc.length) return {sps:sps, pps:null};
+    var ppsLen = (desc[off]<<8) | desc[off+1]; off += 2;
+    if (off+ppsLen > desc.length) return {sps:sps, pps:null};
+    var pps = desc.slice(off, off+ppsLen);
+    return {sps:sps, pps:pps};
+  }catch(e){ return {sps:null, pps:null}; }
+}
+function avccBox(sps, pps){
+  var body = concatBytes([mp4U8(1), mp4U8(sps[1]), mp4U8(sps[2]), mp4U8(sps[3]), mp4U8(0xFF), mp4U8(0xE1), mp4U16(sps.length), sps, mp4U8(1), mp4U16(pps.length), pps]);
+  return mp4Box("avcC", [body]);
+}
+function buildMP4(samples, width, height, sps, pps){
+  if (!samples.length || !sps || !pps) throw new Error("buildMP4: need samples + SPS + PPS");
+  var timescale = 30000;
+  var frameDur = 1000; // 30 fps at timescale 30000
+  var totalDur = samples.length * frameDur;
+  // mdat payload = all samples concatenated
+  var mdatData = concatBytes(samples.map(function(s){ return s.data; }));
+  // Build stbl with placeholder stco first to measure moov size, then rebuild with correct stco.
+  function buildMoov(stcoVal){
+    var compName = concatBytes([mp4U8(12), mp4Str("VideoHandler"), new Uint8Array(19)]);
+    var stsd = mp4Box("stsd", [concatBytes([mp4U32(0), mp4U32(1), mp4Box("avc1", [
+      concatBytes([new Uint8Array(6), mp4U16(1), mp4U16(0), mp4U16(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U16(width), mp4U16(height), mp4U32(0x00480000), mp4U32(0x00480000), mp4U32(0), mp4U16(1), compName, mp4U16(0x0018), mp4U16(-1)]),
+      avccBox(sps, pps)
+    ])])]);
+    var sttsData = concatBytes([mp4U32(0), mp4U32(1), mp4U32(samples.length), mp4U32(frameDur)]);
+    var stts = mp4Box("stts", [sttsData]);
+    var keyIdx = []; samples.forEach(function(s,i){ if(s.key) keyIdx.push(i+1); });
+    var stssData = concatBytes([mp4U32(0), mp4U32(keyIdx.length)].concat(keyIdx.map(function(k){ return mp4U32(k); })));
+    var stss = mp4Box("stss", [stssData]);
+    var stszData = concatBytes([mp4U32(0), mp4U32(0), mp4U32(samples.length)].concat(samples.map(function(s){ return mp4U32(s.data.length); })));
+    var stsz = mp4Box("stsz", [stszData]);
+    var stsc = mp4Box("stsc", [concatBytes([mp4U32(0), mp4U32(1), mp4U32(1), mp4U32(samples.length), mp4U32(1)])]);
+    var stco = mp4Box("stco", [concatBytes([mp4U32(0), mp4U32(1), mp4U32(stcoVal)])]);
+    var stbl = mp4Box("stbl", [stsd, stts, stss, stsz, stsc, stco]);
+    var minf = mp4Box("minf", [mp4Box("vmhd", [concatBytes([mp4U32(1), mp4U16(0), mp4U16(0), mp4U16(0), mp4U16(0)])]), mp4Box("dinf", [mp4Box("dref", [concatBytes([mp4U32(0), mp4U32(1), mp4Box("url ", [mp4U32(1)])])])]), stbl]);
+    var mdhd = mp4Box("mdhd", [concatBytes([mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(timescale), mp4U32(totalDur), mp4U16(0x55c4), mp4U16(0)])]);
+    var hdlr = mp4Box("hdlr", [concatBytes([mp4U32(0), mp4U32(0), mp4Str("vide"), mp4U32(0), mp4U32(0), mp4U32(0), mp4Str("VideoHandler\0")])]);
+    var mdia = mp4Box("mdia", [mdhd, hdlr, minf]);
+    var tkhd = mp4Box("tkhd", [concatBytes([mp4U32(7), mp4U32(0), mp4U32(0), mp4U32(1), mp4U32(0), mp4U32(totalDur), mp4U32(0), mp4U32(0), mp4U16(0), mp4U16(0), mp4U16(0), mp4U16(0), mp4U32(0x00010000), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0x00010000), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0x40000000), mp4U32(width*65536), mp4U32(height*65536)])]);
+    var trak = mp4Box("trak", [tkhd, mdia]);
+    var mvhd = mp4Box("mvhd", [concatBytes([mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(timescale), mp4U32(totalDur), mp4U32(0x00010000), mp4U16(0x0100), mp4U16(0), mp4U32(0), mp4U32(0), mp4U32(0x00010000), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0x00010000), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0x40000000), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(2)])]);
+    return mp4Box("moov", [mvhd, trak]);
+  }
+  var ftyp = mp4Box("ftyp", [concatBytes([mp4Str("isom"), mp4U32(512), mp4Str("isom"), mp4Str("iso2"), mp4Str("avc1"), mp4Str("mp41")])]);
+  var moov0 = buildMoov(0);
+  var stcoVal = ftyp.byteLength + moov0.byteLength + 8; // mdat header
+  var moov = buildMoov(stcoVal);
+  var mdat = mp4Box("mdat", [mdatData]);
+  return concatBytes([ftyp, moov, mdat]);
+}
+// __MUXER_END__
+
+var $ = function(id){ return document.getElementById(id); };
+function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleTimeString() + "] " + msg + "\n"; el.scrollTop = el.scrollHeight; }
+if (!window.isSecureContext){
+  log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
+}
+log("Blogspot tool version: blogspot-v1, 2026-10-28. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND).");
+function updateAudioNote(){
+  var m=$("audioMode").value;
+  $("audioModeNote").textContent = (m==="original")
+    ? "🔊 Audio mode: Original video audio — Start နှိပ်ရုံနဲ့ အသံ ပါမယ်။"
+    : (m==="silent")
+    ? "🔇 Audio mode: Silent — အသံ မပါဘူး။ အသံပါချင်ရင် Audio mode ပြောင်းပါ။"
+    : (m==="gemini")
+    ? "🎙️ Audio mode: Gemini TTS narration — section 3 မှာ TTS အရင်ထုတ်ပြီးမှ Start နှိပ်ပါ။"
+    : "🎵 Audio mode: Uploaded audio — section 4 မှာ audio file အရင်ရွေးပြီးမှ Start နှိပ်ပါ။";
+}
+$("audioMode").addEventListener("change", updateAudioNote);
+updateAudioNote();
+$("blurInt").addEventListener("input", function(){ $("blurIntVal").textContent = $("blurInt").value; });
+var srcFile=null, srcDuration=0, srcW=0, srcH=0, running=false, cancelFlag=false;
+function even(n){ return Math.max(2, Math.round(n/2)*2); }
+function canvasSize(){
+  if ($("ratio").value === "9:16") return {w:720, h:1280};
+  var longSide=720, scale=Math.min(1, longSide/Math.max(srcW, srcH));
+  return {w: even(srcW*scale), h: even(srcH*scale)};
+}
+function blurBox(cw, ch){
+  var full = $("fullWidth").checked;
+  var x = full ? 0 : parseFloat($("blurX").value)/100*cw;
+  var y = parseFloat($("blurY").value)/100*ch;
+  var w = full ? cw : parseFloat($("blurW").value)/100*cw;
+  var h = parseFloat($("blurH").value)/100*ch;
+  x=Math.max(0,Math.min(cw-2,x)); y=Math.max(0,Math.min(ch-2,y));
+  w=Math.max(2,Math.min(cw-x,w)); h=Math.max(2,Math.min(ch-y,h));
+  return {x:even(x), y:even(y), w:even(w), h:even(h)};
+}
+function wrapLines(ctx, text, maxW){
+  var words=text.split(/\s+/).filter(Boolean), lines=[], line="";
+  words.forEach(function(wd){
+    var test = line ? line+" "+wd : wd;
+    if (ctx.measureText(test).width > maxW && line){ lines.push(line); line=wd; } else line=test;
+  });
+  if (line) lines.push(line);
+  return lines.length?lines:[text];
+}
+function drawSubtitle(ctx, cw, ch){
+  var elapsedSec = 0;
+  try{ var _na=$("narrAudio"); if (_na && !_na.paused && _na.currentTime>0) elapsedSec=_na.currentTime; else if (renderStartPerf) elapsedSec=(performance.now()-renderStartPerf)/1000; }catch(e){ if (renderStartPerf) elapsedSec=(performance.now()-renderStartPerf)/1000; }
+  // Timed mode: ONE line-chunk at a time (never the whole segment text).
+  // Non-package prototype mode keeps its whole-clip sample text.
+  var text=currentSubtitleLine(elapsedSec).trim(); if(!text) return;
+  var sizePx=Math.round(parseFloat($("fontSize").value)*ch/360);
+  ctx.font = sizePx + 'px "Noto Sans Myanmar", "Myanmar Text", sans-serif';
+  ctx.textAlign="center"; ctx.textBaseline="top";
+  var maxW=cw*parseFloat($("capW").value)/100;
+  // Timed mode: the chunk is already capped (phrase + 40 chars) to fit
+  // ONE row — never wrap it into a second row here. Prototype mode
+  // (whole-clip text) still wraps normally.
+  var lines=[text]; // timed mode: the chunk is already capped to fit ONE row — never wrap it into a second row.
+  var lineH=Math.round(sizePx*1.4);
+  var pos=$("subPos").value, top;
+  if (pos==="Middle") top=Math.round(ch/2 - lines.length*lineH/2);
+  else if (pos==="Custom") top=Math.round(parseFloat($("subY").value)/100*ch);
+  else top=ch - lines.length*lineH - 20; // Bottom
+  // If blur is on and position is Bottom, keep subtitle above the blur box (bot behaviour).
+  if ($("blurOn").checked && pos==="Bottom"){
+    var b=blurBox(cw,ch); var above=b.y- lines.length*lineH - 10; if (above < top) top=Math.max(0, above);
+  }
+  ctx.lineWidth=parseInt($("outlineW").value,10); ctx.strokeStyle=$("outlineColor").value; ctx.fillStyle=$("textColor").value;
+  lines.forEach(function(ln,i){ var y=top+i*lineH; ctx.strokeText(ln, cw/2, y); ctx.fillText(ln, cw/2, y); });
+}
+function drawFrame(ctx, video, cw, ch, blurCanvas, blurCtx){
+  // Draw source: Original = fit (no bars, aspect preserved by canvas size); 9:16 = cover crop.
+  if ($("ratio").value==="9:16"){
+    var scale=Math.max(cw/srcW, ch/srcH); var dw=srcW*scale, dh=srcH*scale;
+    ctx.drawImage(video, (cw-dw)/2, (ch-dh)/2, dw, dh);
+  } else {
+    ctx.drawImage(video, 0, 0, cw, ch);
+  }
+  if ($("blurOn").checked){
+    var b=blurBox(cw,ch); var inten=parseInt($("blurInt").value,10);
+    if (inten>0){
+      blurCtx.clearRect(0,0,cw,ch); blurCtx.filter="blur("+inten+"px)"; blurCtx.drawImage(ctx.canvas, 0, 0);
+      blurCtx.filter="none";
+      ctx.drawImage(blurCanvas, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h);
+    }
+  }
+  drawSubtitle(ctx, cw, ch);
+}
+
+var segments=[], timedSegments=[], narrDur=0, narrSrcKind="", renderStartPerf=0;
+function currentSubtitleText(elapsedSec){
+  return currentSubtitleLine(elapsedSec);
+}
+// ONE line at a time, example-video style (2026-10-28, mirrors
+// pipeline._split_segment_cues): split at sentence boundaries first
+// (Burmese "။", "?", "!"), then by words capped at 40 chars AND at
+// caption_words_per_line words (package style, default 4, clamped
+// 3-12) — whichever comes first. Timed proportionally within the
+// segment by CHARACTER count, min cue ~0.8s (short tails merge into
+// their neighbour, never flash by alone). Outside all segments, show
+// nothing — never the whole segment paragraph, never the last
+// segment's text forever.
+function splitLineChunks(text, n){
+  var maxCh=40;
+  try{ maxCh=parseInt($("capChars").value,10)||40; }catch(e){}
+  maxCh=Math.max(20, Math.min(80, maxCh));
+  n=Math.max(3, Math.min(12, parseInt(n,10)||4));
+  var phrases=String(text).trim().split(/(?<=[။?!])\s+/).filter(function(p){ return p.trim(); });
+  if (!phrases.length) phrases=[String(text).trim()];
+  var chunks=[];
+  phrases.forEach(function(ph){
+    var words=ph.trim().split(/\s+/).filter(Boolean), cur=[], curLen=0;
+    words.forEach(function(wd){
+      var add=wd.length + (cur.length?1:0);
+      if (cur.length && (curLen+add > maxCh || cur.length >= n)){ chunks.push(cur.join(" ")); cur=[]; curLen=0; add=wd.length; }
+      cur.push(wd); curLen+=add;
+    });
+    if (cur.length) chunks.push(cur.join(" "));
+  });
+  return chunks.filter(function(c){ return c; });
+}
+function currentSubtitleLine(elapsedSec){
+  if (!timedSegments.length){
+    if (!segments.length) return "";
+    // No timing computed yet (e.g. preview before video load): show first segment.
+    return segments[0].text;
+  }
+  for (var i=0;i<timedSegments.length;i++){
+    var sg=timedSegments[i];
+    if (elapsedSec >= sg.start && elapsedSec < sg.end) return sg.text;
+  }
+  return "";
+}
+// Timed segments: cue-level chunks (phrase + char/word caps) with times
+// proportional to character count over clockDur, contiguous, no overlaps.
+function computeTimedSegments(clockDur){
+  timedSegments=[];
+  if (!segments.length || !isFinite(clockDur) || clockDur <= 0) return;
+  var total=0; segments.forEach(function(s){ total+=s.text.length; });
+  if (!total) return;
+  var t=0;
+  segments.forEach(function(s, idx){
+    var dur=clockDur*s.text.length/total;
+    var st=t, en=(idx===segments.length-1) ? clockDur : t+dur;
+    timedSegments.push({start:st, end:en, text:s.text});
+    t=en;
+  });
+}
+function renderSegmentsText(){
+  var lines=timedSegments.length ? timedSegments : segments.map(function(s,i){ return {start:0, end:0, text:s.text}; });
+  $("segmentsText").value = lines.map(function(s){ return s.start.toFixed(1)+"-"+s.end.toFixed(1)+" | "+s.text; }).join("\n");
+  $("segInfo").textContent = "Segments: "+segments.length+" — timed over "+(timedSegments.length ? timedSegments[timedSegments.length-1].end.toFixed(1)+"s" : "—")+" (edit the list below, then Apply).";
+}
+function autoSplitSegments(){
+  var txt=$("scriptText").value.trim();
+  if (!txt){ alert("Section 2 မှာ narration script အရင်ရိုက်ပါ / paste လုပ်ပါ။"); return; }
+  if (!srcDuration || srcDuration <= 0){ alert("Video file အရင်ရွေးပါ — segment အချိန်တွေကို video duration ပေါ်မှာ ခွဲရမှာမို့ video လိုတယ်။"); return; }
+  var maxCh=parseInt($("capChars").value,10)||40;
+  var maxW=parseInt($("capWords").value,10)||4;
+  segments = splitLineChunks(txt, maxW).map(function(c){ return {text:c}; });
+  // splitLineChunks already applies char+word caps; its phrase split is
+  // the bot rule (sentence/phrase first, then words).
+  if (!segments.length) segments=[{text:txt}];
+  computeTimedSegments(srcDuration);
+  renderSegmentsText(); redrawPreview();
+  log("Auto-split: "+segments.length+" segments over "+srcDuration.toFixed(1)+"s (chars="+maxCh+", words="+maxW+"). Edit the list, then Apply.");
+}
+function applySegmentEdits(){
+  var lines=$("segmentsText").value.split("\n").map(function(l){ return l.trim(); }).filter(Boolean);
+  var parsed=[];
+  lines.forEach(function(l){
+    var m=l.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\s*\|\s*(.+)$/);
+    if (m) parsed.push({start:parseFloat(m[1]), end:parseFloat(m[2]), text:m[3]});
+    else parsed.push({start:0, end:0, text:l});
+  });
+  if (!parsed.length){ alert("Segment list မှာ စာသား မရှိဘူး။"); return; }
+  segments=parsed.map(function(p){ return {text:p.text}; });
+  timedSegments=parsed.filter(function(p){ return p.end > p.start; });
+  if (!timedSegments.length && srcDuration) computeTimedSegments(srcDuration);
+  renderSegmentsText(); redrawPreview();
+  log("Segment edits applied: "+segments.length+" segments.");
+}
+$("fileInput").addEventListener("change", function(){
+  srcFile=this.files[0]; if(!srcFile) return;
+  if (srcFile.type && srcFile.type.indexOf("video/") !== 0){ log("WARNING: chosen file type is '"+srcFile.type+"' — it may not be a video. Choose an MP4 video file."); }
+  var v=$("srcVideo");
+  v.onerror=function(){ srcW=0; srcH=0; $("srcInfo").textContent="Video load မအောင်ဘူး — ဒီ file ကို browser က ဖွင့်လို့မရဘူး။ တခြား MP4 file တခု ပြန်ရွေးပါ။"; log("ERROR: video element failed to load this file (no supported sources). Choose another MP4."); };
+  v.src=URL.createObjectURL(srcFile);
+  v.onloadedmetadata=function(){
+    srcDuration=v.duration; srcW=v.videoWidth; srcH=v.videoHeight;
+    $("srcInfo").textContent="File: "+srcFile.name+" — "+srcW+"×"+srcH+", "+srcDuration.toFixed(1)+"s. Tip: trim to ≤30s in your editor first for the first test, or seek and render a short clip.";
+    log("Loaded: "+srcW+"×"+srcH+", duration "+srcDuration.toFixed(2)+"s");
+    if (!segments.length){ segments=[{text:$("scriptText").value.trim() || "ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်"}]; }
+    computeTimedSegments(srcDuration); renderSegmentsText();
+    // Preview first frame
+    v.currentTime=Math.min(1, srcDuration*0.1);
+    v.onseeked=function(){
+      var cs=canvasSize(); var pc=$("previewCanvas"); pc.width=cs.w; pc.height=cs.h;
+      var pctx=pc.getContext("2d"); var bc=document.createElement("canvas"); bc.width=cs.w; bc.height=cs.h;
+      drawFrame(pctx, v, cs.w, cs.h, bc, bc.getContext("2d"));
+      log("Preview drawn at "+cs.w+"×"+cs.h+" with blur="+$("blurOn").checked+", subtitle position="+$("subPos").value);
+    };
+  };
+});
+// Subtitle bounding box (same layout as drawSubtitle) — used for hand-dragging the subtitle on the preview.
+// In package mode the box is sized for the current ONE line-chunk, not the whole segment text.
+function subtitleBox(cw, ch){
+  var text=currentSubtitleLine(0).trim(); if(!text) return null;
+  var tmp=document.createElement("canvas").getContext("2d");
+  var sizePx=Math.round(parseFloat($("fontSize").value)*ch/360);
+  tmp.font = sizePx + 'px "Noto Sans Myanmar", "Myanmar Text", sans-serif';
+  var maxW=cw*parseFloat($("capW").value)/100;
+  var lines=[text];
+  var lineH=Math.round(sizePx*1.4);
+  var pos=$("subPos").value, top;
+  if (pos==="Middle") top=Math.round(ch/2 - lines.length*lineH/2);
+  else if (pos==="Custom") top=Math.round(parseFloat($("subY").value)/100*ch);
+  else top=ch - lines.length*lineH - 20;
+  if ($("blurOn").checked && pos==="Bottom"){
+    var b=blurBox(cw,ch); var above=b.y- lines.length*lineH - 10; if (above < top) top=Math.max(0, above);
+  }
+  var w=0; lines.forEach(function(ln){ w=Math.max(w, tmp.measureText(ln).width); });
+  return {x:Math.max(0, cw/2-w/2-8), y:Math.max(0, top-4), w:Math.min(cw, w+16), h:lines.length*lineH+8, top:top, lineH:lineH};
+}
+// Drag the blur box / subtitle by hand on the preview (touch + mouse). Preview-only outlines, NOT in the render.
+function redrawPreview(){
+  var v=$("srcVideo"); if (!srcFile || !srcW || !srcH) return;
+  var cs=canvasSize(); var pc=$("previewCanvas"); pc.width=cs.w; pc.height=cs.h;
+  var pctx=pc.getContext("2d"); var bc=document.createElement("canvas"); bc.width=cs.w; bc.height=cs.h;
+  drawFrame(pctx, v, cs.w, cs.h, bc, bc.getContext("2d"));
+  if ($("blurOn").checked){
+    var b=blurBox(cs.w, cs.h);
+    pctx.save(); pctx.strokeStyle="#FF0000"; pctx.lineWidth=4; pctx.strokeRect(b.x, b.y, b.w, b.h);
+    pctx.fillStyle="#FF0000"; pctx.fillRect(b.x+b.w-16, b.y+b.h-16, 16, 16); // resize handle
+    pctx.restore();
+  }
+  var sb=subtitleBox(cs.w, cs.h);
+  if (sb){
+    pctx.save(); pctx.strokeStyle="#FFFF00"; pctx.lineWidth=3; pctx.setLineDash([8,6]); pctx.strokeRect(sb.x, sb.y, sb.w, sb.h); pctx.restore();
+  }
+}
+var dragMode=null, dragStart=null, dragBox=null;
+function previewCoords(ev){
+  var pc=$("previewCanvas"); var r=pc.getBoundingClientRect();
+  return {x:(ev.clientX-r.left)*pc.width/r.width, y:(ev.clientY-r.top)*pc.height/r.height};
+}
+$("previewCanvas").addEventListener("pointerdown", function(ev){
+  if (!srcFile || !srcW || !srcH) return;
+  var cs=canvasSize(); var p=previewCoords(ev);
+  if ($("blurOn").checked){
+    var b=blurBox(cs.w, cs.h);
+    var nearCorner = Math.abs(p.x-(b.x+b.w))<24 && Math.abs(p.y-(b.y+b.h))<24;
+    if (nearCorner){ dragMode="resize"; dragStart=p; dragBox=b; }
+    else if (p.x>=b.x && p.x<=b.x+b.w && p.y>=b.y && p.y<=b.y+b.h){ dragMode="move"; dragStart=p; dragBox=b; }
+  }
+  if (!dragMode){
+    var sb=subtitleBox(cs.w, cs.h);
+    if (sb && p.x>=sb.x && p.x<=sb.x+sb.w && p.y>=sb.y && p.y<=sb.y+sb.h){
+      dragMode="subtitle"; dragStart=p; dragBox={x:sb.x, y:sb.top, w:sb.w, h:sb.h};
+      $("subPos").value="Custom";
+    } else return;
+  }
+  this.setPointerCapture(ev.pointerId); ev.preventDefault();
+  log("Drag started: "+dragMode+" at "+Math.round(p.x)+","+Math.round(p.y));
+});
+$("previewCanvas").addEventListener("pointermove", function(ev){
+  if (!dragMode) return;
+  var cs=canvasSize();
+  var p=previewCoords(ev);
+  if (dragMode==="subtitle"){
+    var ny=dragBox.y + (p.y-dragStart.y);
+    ny=Math.max(0, Math.min(cs.h-dragBox.h, ny));
+    $("subY").value=(ny/cs.h*100).toFixed(1);
+  } else if (dragMode==="move"){
+    var nx=dragBox.x + (p.x-dragStart.x), ny=dragBox.y + (p.y-dragStart.y);
+    nx=Math.max(0, Math.min(cs.w-dragBox.w, nx)); ny=Math.max(0, Math.min(cs.h-dragBox.h, ny));
+    $("blurX").value=(nx/cs.w*100).toFixed(1); $("blurY").value=(ny/cs.h*100).toFixed(1);
+  } else {
+    var nw=Math.max(2, Math.min(cs.w-dragBox.x, dragBox.w + (p.x-dragStart.x)));
+    var nh=Math.max(2, Math.min(cs.h-dragBox.y, dragBox.h + (p.y-dragStart.y)));
+    var wPct=nw/cs.w*100, hPct=nh/cs.h*100;
+    if (wPct>=10 && wPct<=100) $("blurW").value=wPct.toFixed(1);
+    if (hPct>=3 && hPct<=30) $("blurH").value=hPct.toFixed(1);
+  }
+  redrawPreview();
+});
+function endDrag(){
+  if (!dragMode) return;
+  if (dragMode==="subtitle") log("Subtitle moved by hand: Custom position, subY="+$("subY").value+"% — press Start render to use this position.");
+  else log("Blur moved by hand: x="+$("blurX").value+"%, y="+$("blurY").value+"%, w="+$("blurW").value+"%, h="+$("blurH").value+"% — press Start render to use this position.");
+  dragMode=null; dragStart=null; dragBox=null;
+}
+// Font size slider (hand adjustment) + live preview on any setting change.
+$("fontSizeRange").addEventListener("input", function(){ $("fontSize").value=this.value; $("fontSizeRangeVal").textContent=this.value; redrawPreview(); });
+$("fontSize").addEventListener("input", function(){ $("fontSizeRange").value=this.value; $("fontSizeRangeVal").textContent=this.value; redrawPreview(); });
+["blurX","blurY","blurW","blurH","blurInt","textColor","outlineColor","outlineW","subPos","subY","capW","ratio","speed"].forEach(function(id){
+  var el=$(id); if (el) el.addEventListener("input", function(){ redrawPreview(); });
+});
+$("blurOn").addEventListener("change", function(){ redrawPreview(); });
+$("fullWidth").addEventListener("change", function(){ redrawPreview(); });
+$("autoSplitBtn").addEventListener("click", autoSplitSegments);
+$("applySegBtn").addEventListener("click", applySegmentEdits);
+$("scriptText").addEventListener("input", function(){ log("Script edited — press Auto-split again to re-split segments."); });
+$("capChars").addEventListener("input", function(){ log("Chars per cue changed to "+$("capChars").value+" — press Auto-split again to re-split."); });
+$("capWords").addEventListener("input", function(){ log("Words per cue changed to "+$("capWords").value+" — press Auto-split again to re-split."); });
+$("previewCanvas").addEventListener("pointerup", endDrag);
+$("previewCanvas").addEventListener("pointercancel", endDrag);
+
+// ---------- Blogspot-only: Gemini (user key, localStorage only) + uploaded audio ----------
+function geminiKey(){
+  var k=$("geminiKey").value.trim();
+  return k;
+}
+function refreshKeyInfo(){
+  var saved=false; try{ saved=!!localStorage.getItem("oneclickrecap_gemini_key"); }catch(e){}
+  $("keyInfo").textContent = saved ? "Key saved on THIS phone only (localStorage). It is never sent to any VM or to the assistant." : "No key saved.";
+  if (saved && !$("geminiKey").value){ try{ $("geminiKey").value=localStorage.getItem("oneclickrecap_gemini_key")||""; }catch(e){} }
+}
+$("saveKeyBtn").addEventListener("click", function(){
+  var k=geminiKey(); if(!k){ alert("Key အရင်ထည့်ပါ။"); return; }
+  try{ localStorage.setItem("oneclickrecap_gemini_key", k); }catch(e){ alert("localStorage save မရဘူး: "+e.message); return; }
+  refreshKeyInfo(); log("Gemini key saved in this browser's localStorage only (not sent anywhere yet).");
+});
+$("delKeyBtn").addEventListener("click", function(){
+  try{ localStorage.removeItem("oneclickrecap_gemini_key"); }catch(e){}
+  $("geminiKey").value=""; refreshKeyInfo(); log("Gemini key deleted from this phone.");
+});
+refreshKeyInfo();
+async function geminiGenerate(model, body){
+  var key=geminiKey(); if(!key) throw new Error("Gemini key မရှိဘူး — section 3 မှာ ကိုယ့် AI Studio key အရင်ထည့်ပါ။");
+  var url="https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent";
+  var r=await fetch(url, {method:"POST", headers:{"Content-Type":"application/json", "x-goog-api-key":key}, body:JSON.stringify(body)});
+  var j=await r.json().catch(function(){ return {}; });
+  if (!r.ok){ var msg=(j.error && j.error.message) ? j.error.message : ("HTTP "+r.status); throw new Error("Gemini error: "+msg); }
+  return j;
+}
+function geminiTextOf(j){
+  var parts=[]; try{
+    (j.candidates||[]).forEach(function(c){ (c.content.parts||[]).forEach(function(p){ if(p.text) parts.push(p.text); }); });
+  }catch(e){}
+  return parts.join("\n").trim();
+}
+$("geminiScriptBtn").addEventListener("click", async function(){
+  var tr=$("transcriptText").value.trim();
+  if (!tr){ alert("Transcript / notes အရင်ထည့်ပါ။"); return; }
+  try{
+    log("Gemini script generation started (model gemini-2.5-flash, your key, direct browser→Google)...");
+    var prompt="Write a natural, spoken Burmese movie-recap narration script from the transcript/notes below. Spoken Burmese only, no stage directions, no English, one flowing narration. Keep it concise and faithful to the transcript — do not invent plot points.\n\nTranscript/notes:\n"+tr;
+    var j=await geminiGenerate("gemini-2.5-flash", {contents:[{parts:[{text:prompt}]}]});
+    var out=geminiTextOf(j);
+    if (!out) throw new Error("Gemini returned no text (empty candidates).");
+    $("scriptText").value=out;
+    log("Gemini script received ("+out.length+" chars) — put into section 2 for YOUR review/edit. Press Auto-split after you edit it.");
+    alert("Gemini script ရပြီ — section 2 မှာ စစ်ပြီး ပြင်ပါ, ပြီးမှ Auto-split နှိပ်ပါ။");
+  }catch(e){ log("Gemini script FAILED: "+e.message+" — type/paste the script manually in section 2 instead."); alert("Gemini script မရဘူး: "+e.message); }
+});
+function pcmToWav(pcmBytes, sampleRate){
+  var header=new Uint8Array(44); var dv=new DataView(header.buffer);
+  function ws(off, s){ for(var i=0;i<s.length;i++) header[off+i]=s.charCodeAt(i); }
+  ws(0,"RIFF"); dv.setUint32(4, 36+pcmBytes.length, true); ws(8,"WAVE"); ws(12,"fmt ");
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, sampleRate, true); dv.setUint32(28, sampleRate*2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); ws(36,"data"); dv.setUint32(40, pcmBytes.length, true);
+  var out=new Uint8Array(44+pcmBytes.length); out.set(header,0); out.set(pcmBytes,44); return out;
+}
+function b64ToBytes(b64){
+  var bin=atob(b64); var out=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
+  return out;
+}
+$("geminiTtsBtn").addEventListener("click", async function(){
+  var script=$("scriptText").value.trim();
+  if (!script){ alert("Section 2 မှာ narration script အရင်ရှိရမယ်။"); return; }
+  try{
+    log("Gemini TTS started (model gemini-2.5-flash-preview-tts, voice Kore, your key)...");
+    // Chunk at sentence boundaries, ~600 chars, so one long script does not fail as a single call.
+    var sentences=script.split(/(?<=[။?!])\s+/).filter(function(s){ return s.trim(); });
+    if (!sentences.length) sentences=[script];
+    var chunks=[], cur="";
+    sentences.forEach(function(s){
+      if (cur && (cur.length+s.length+1 > 600)){ chunks.push(cur); cur=s; } else cur=cur?cur+" "+s:s;
+    });
+    if (cur) chunks.push(cur);
+    var allPcm=[];
+    for (var ci=0;ci<chunks.length;ci++){
+      log("TTS chunk "+(ci+1)+"/"+chunks.length+" ("+chunks[ci].length+" chars)...");
+      var j=await geminiGenerate("gemini-2.5-flash-preview-tts", {contents:[{parts:[{text:chunks[ci]}]}],
+        generationConfig:{responseModalities:["AUDIO"], speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:"Kore"}}}}});
+      var part=null; try{ part=j.candidates[0].content.parts[0]; }catch(e){}
+      if (!part || !part.inlineData || !part.inlineData.data) throw new Error("TTS chunk "+(ci+1)+" returned no audio (empty inlineData).");
+      var mime=(part.inlineData.mimeType||"").toLowerCase();
+      var bytes=b64ToBytes(part.inlineData.data);
+      if (mime.indexOf("wav")>=0){ allPcm.push(bytes.slice(44)); log("TTS chunk "+(ci+1)+": WAV response, header stripped."); }
+      else { allPcm.push(bytes); log("TTS chunk "+(ci+1)+": PCM 24kHz mono."); }
+    }
+    var total=0; allPcm.forEach(function(b){ total+=b.length; });
+    var joined=new Uint8Array(total), off=0; allPcm.forEach(function(b){ joined.set(b,off); off+=b.length; });
+    var wav=pcmToWav(joined, 24000);
+    var blob=new Blob([wav], {type:"audio/wav"});
+    var url=URL.createObjectURL(blob);
+    var na=$("narrAudio"); na.src=url; narrSrcKind="gemini";
+    na.onloadedmetadata=function(){ narrDur=na.duration; $("ttsInfo").textContent="Gemini TTS ready: "+narrDur.toFixed(1)+"s, "+chunks.length+" chunk(s), voice Kore. Set Audio mode to Gemini TTS narration, then Start render."; log("Gemini TTS ready: "+narrDur.toFixed(1)+"s."); };
+    $("audioMode").value="gemini"; updateAudioNote();
+    alert("Gemini TTS ရပြီ ("+chunks.length+" chunk) — Audio mode ကို Gemini TTS လို့ ထားပြီးပါပြီ, Start render နှိပ်ပါ။");
+  }catch(e){
+    log("Gemini TTS FAILED: "+e.message+" — falling back: set Audio mode to Original or Silent and render (no fake audio created).");
+    alert("Gemini TTS မရဘူး: "+e.message+" — Original / Silent mode နဲ့ render လုပ်ပါ။");
+  }
+});
+$("audioFile").addEventListener("change", function(){
+  var f=this.files[0]; if(!f) return;
+  var url=URL.createObjectURL(f);
+  var na=$("narrAudio"); na.src=url; narrSrcKind="uploaded";
+  na.onloadedmetadata=function(){ narrDur=na.duration; $("narrInfo").textContent="Uploaded narration: "+f.name+" — "+narrDur.toFixed(1)+"s. Set Audio mode to Uploaded audio, then Start render."; log("Uploaded narration loaded: "+narrDur.toFixed(1)+"s."); };
+  $("audioMode").value="uploaded"; updateAudioNote();
+});
+
+$("cancelBtn").addEventListener("click", function(){ cancelFlag=true; log("Cancel requested — stopping at next frame."); });
+$("renderBtn").addEventListener("click", async function(){
+  if (!srcFile){ alert("Video file မရွေးရသေးဘူး — အရင် Choose video file နှိပ်ပြီး video တပုဒ် ရွေးပါ, Preview မှာ ပထမ frame ပေါ်လာတဲ့အထိ စောင့်ပါ။"); log("ERROR: Start pressed with no video file — choose a file first and wait for the preview."); return; }
+  if (!srcW || !srcH || !isFinite(srcDuration) || srcDuration <= 0){ alert("Video file ကို load လုပ်နေတုန်း / load မအောင်သေးဘူး — Preview မှာ frame ပေါ်လာတဲ့အထိ စောင့်ပါ, မပေါ်ရင် တခြား MP4 file တခု ပြန်ရွေးပါ။"); log("ERROR: Start pressed but video metadata not loaded (srcW="+srcW+", srcH="+srcH+", duration="+srcDuration+") — wait for preview, or choose another MP4."); return; }
+  if (running) return; running=true; cancelFlag=false; renderStartPerf=performance.now();
+  $("cancelBtn").disabled=false; $("downloadLink").style.display="none";
+  var startTime=performance.now();
+  try { if (navigator.wakeLock && navigator.wakeLock.request){ try{ await navigator.wakeLock.request("screen"); log("Screen wake-lock requested (does not guarantee background rendering)."); }catch(e){ log("Wake-lock failed: "+e.message); } } } catch(e){}
+  var cs=canvasSize(); var cw=cs.w, ch=cs.h; var fps=30;
+  var canvas=document.createElement("canvas"); canvas.width=cw; canvas.height=ch;
+  var ctx=canvas.getContext("2d");
+  var blurCanvas=document.createElement("canvas"); blurCanvas.width=cw; blurCanvas.height=ch; var blurCtx=blurCanvas.getContext("2d");
+  var v=$("srcVideo");
+  // Global-speed timing (website-v1 simplification, labelled): narration
+  // clock drives subtitles; video speed = videoDur / narrDur (clamped).
+  var _naDur = narrDur>0 ? narrDur : (isFinite($("narrAudio").duration) && $("narrAudio").duration>0 ? $("narrAudio").duration : 0);
+  var narrClockDur = (_naDur>0 && (audioMode==="gemini" || audioMode==="uploaded")) ? _naDur : 0;
+  var renderSpeed = narrClockDur ? Math.max(0.5, Math.min(2.5, srcDuration/narrClockDur)) : parseFloat($("speed").value);
+  if (narrClockDur) log("Global-speed: video "+srcDuration.toFixed(1)+"s / narration "+narrClockDur.toFixed(1)+"s = "+renderSpeed.toFixed(2)+"x (clamped 0.5-2.5). Subtitles follow the narration clock.");
+  if (segments.length) computeTimedSegments(narrClockDur || srcDuration);
+  renderSegmentsText();
+  v.playbackRate = renderSpeed;
+  var audioMode=$("audioMode").value;
+  log("Audio mode selected: "+audioMode+" (gemini/uploaded/original = MediaRecorder + Web Audio, silent = video-only WebCodecs).");
+  v.muted = (audioMode !== "original"); // narration/uploaded modes mute the original so only the narration is heard
+  if (audioMode === "original") log("Audio mode: original audio — video element unmuted for capture; lower phone speaker volume if it plays aloud.");
+  var useWebCodecs = (audioMode === "silent") && (typeof VideoEncoder !== "undefined");
+  var encPath="unknown", samples=[], sps=null, pps=null, encodedFrames=0, drawnFrames=0, lastDesc=null;
+  var mediaRecorder=null, recChunks=[], recMime="";
+  if (useWebCodecs){
+    try{
+      var cfg={codec:"avc1.640028", width:cw, height:ch, bitrate:2500000, framerate:fps, hardwareAcceleration:"prefer-hardware"};
+      var sup=await VideoEncoder.isConfigSupported(cfg);
+      log("WebCodecs config supported="+sup.supported+" (requested hardwareAcceleration=prefer-hardware; browser does NOT confirm hardware was actually used — fps below is the proxy evidence).");
+      if (!sup.supported) throw new Error("WebCodecs config not supported");
+      encPath="WebCodecs VideoEncoder avc1.640028, hardwareAcceleration=prefer-hardware (requested)";
+    }catch(e){ log("WebCodecs unavailable, falling back to MediaRecorder: "+e.message); useWebCodecs=false; }
+  } else { log("WebCodecs not available in this browser, using MediaRecorder fallback."); }
+  var encoder=null;
+  if (useWebCodecs){
+    encoder=new VideoEncoder({
+      output:function(chunk, meta){
+        try{
+          var data=new Uint8Array(chunk.byteLength); chunk.copyTo(data.buffer);
+          var isKey = chunk.type==="key";
+          if (meta && meta.decoderConfig && meta.decoderConfig.description) lastDesc=new Uint8Array(meta.decoderConfig.description);
+          if (!sps){
+            var parsed = isAnnexB(data) ? parseSpsPpsFromAnnexB(data) : {sps:null,pps:null};
+            if (parsed.sps && parsed.pps){ sps=parsed.sps; pps=parsed.pps; log("SPS/PPS captured from keyframe stream."); }
+            else if (lastDesc){
+              var avccParsed = parseAvccDescription(lastDesc);
+              if (avccParsed.sps && avccParsed.pps){ sps=avccParsed.sps; pps=avccParsed.pps; log("SPS/PPS captured from decoderConfig description (avcC, "+lastDesc.length+" bytes)."); }
+              else if (isKey) log("No SPS/PPS from keyframe; will retry on next keyframe (description bytes: "+lastDesc.length+").");
+            }
+          }
+          var avccData = isAnnexB(data) ? annexBToAvcc(data) : data;
+          samples.push({data:avccData, key:isKey}); encodedFrames++;
+        }catch(err){ log("Encoder output error: "+err.message); }
+      },
+      error:function(e){ log("VideoEncoder error: "+e.message); }
+    });
+    encoder.configure({codec:"avc1.640028", width:cw, height:ch, bitrate:2500000, framerate:fps, hardwareAcceleration:"prefer-hardware"});
+  } else {
+    var stream=canvas.captureStream(fps);
+    var audioTracks=[];
+    if (audioMode === "gemini" || audioMode === "uploaded"){
+      if (!$("narrAudio").src){ log("ERROR: "+audioMode+" mode needs audio first — generate Gemini TTS (section 3) or upload an audio file (section 4), or switch to original/silent."); }
+      else {
+        try{
+          var AC2 = window.AudioContext || window.webkitAudioContext;
+          var actx2 = new AC2(); await actx2.resume();
+          var naEl=$("narrAudio"); naEl.playbackRate=1; // narration clock runs at 1x; the VIDEO is sped/slowed instead
+          var srcNode2 = actx2.createMediaElementSource(naEl);
+          var destNode2 = actx2.createMediaStreamDestination();
+          srcNode2.connect(destNode2);
+          audioTracks = destNode2.stream.getAudioTracks();
+          log("Audio track (narration, Web Audio): "+audioTracks.length+" track(s), AudioContext state="+actx2.state+". Original video audio is muted in recap mode.");
+          audioTracks.forEach(function(t){ stream.addTrack(t); });
+        }catch(e){ log("Narration audio route failed: "+e.message+" — reload the page and try narration mode once (one MediaElementSource per element)."); }
+        if (!audioTracks.length) log("WARNING: no narration audio track found — output will be silent even in narration mode.");
+      }
+    }
+    if (audioMode === "original"){
+      // Primary: Web Audio route (more reliable than captureStream on Chrome Android).
+      // Source -> MediaStreamDestination only (NOT to speakers, so render stays silent
+      // while the recording still gets full-volume audio). Element must be unmuted.
+      try{
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) throw new Error("AudioContext not available");
+        var actx = new AC(); await actx.resume();
+        var srcNode = actx.createMediaElementSource(v);
+        var destNode = actx.createMediaStreamDestination();
+        srcNode.connect(destNode);
+        audioTracks = destNode.stream.getAudioTracks();
+        log("Audio track (Web Audio): "+audioTracks.length+" track(s), AudioContext state="+actx.state+".");
+        audioTracks.forEach(function(t){ stream.addTrack(t); });
+      }catch(e){
+        log("Web Audio route failed: "+e.message+" — trying captureStream fallback. NOTE: if you already rendered audio mode once on this page, reload the page first (one MediaElementSource per element).");
+        try{
+          if (typeof v.captureStream === "function"){
+            var vs=v.captureStream(); audioTracks=vs.getAudioTracks();
+            log("Audio track (captureStream fallback): "+audioTracks.length+" track(s).");
+            audioTracks.forEach(function(t){ stream.addTrack(t); });
+          } else log("Audio track: captureStream not available — audio mode will be silent.");
+        }catch(e2){ log("Audio track error: "+e2.message+" — continuing video-only."); }
+      }
+      if (!audioTracks.length) log("WARNING: no audio track found — output will be silent even in audio mode. Check the source video has sound when played normally.");
+    }
+    var mimes = (audioMode === "original" || audioMode === "gemini" || audioMode === "uploaded")
+      ? ["video/mp4;codecs=avc1.640028,mp4a.40.2","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/mp4;codecs=avc1.640028","video/mp4","video/webm"]
+      : ["video/mp4;codecs=avc1.640028","video/mp4","video/webm;codecs=vp9","video/webm"];
+    recMime=mimes.find(function(m){ return typeof MediaRecorder!=="undefined" && MediaRecorder.isTypeSupported(m); }) || "";
+    mediaRecorder=new MediaRecorder(stream, recMime?{mimeType:recMime, videoBitsPerSecond:2500000}:undefined);
+    mediaRecorder.ondataavailable=function(ev){ if(ev.data && ev.data.size) recChunks.push(ev.data); };
+    mediaRecorder.start(); encPath="MediaRecorder fallback, mimeType="+(recMime||"browser default");
+    log("Fallback path: "+encPath);
+  }
+  log("Rendering started: "+cw+"×"+ch+", speed="+$("speed").value+"×, blur="+$("blurOn").checked+", subtitle="+$("subPos").value);
+  v.currentTime=0;
+  await v.play().catch(function(e){ log("Play failed: "+e.message); });
+  if ((audioMode === "gemini" || audioMode === "uploaded") && $("narrAudio").src){ try{ $("narrAudio").currentTime=0; await $("narrAudio").play(); log("Narration audio started (duration "+narrDur.toFixed(1)+"s, kind="+narrSrcKind+")."); }catch(e){ log("Narration play failed: "+e.message); } }
+  var done=false;
+  function finish(){
+    if (done) return; done=true;
+    (async function(){
+      try{ if (encoder) await encoder.flush(); }catch(e){ log("Flush error: "+e.message); }
+      try{ v.pause(); }catch(e){}
+      try{ $("narrAudio").pause(); }catch(e){}
+      if (mediaRecorder && mediaRecorder.state!=="inactive"){ try{ mediaRecorder.stop(); }catch(e){} await new Promise(function(r){ setTimeout(r,500); }); }
+      var elapsed=(performance.now()-startTime)/1000;
+      var reportFrames = encoder ? encodedFrames : drawnFrames; // MediaRecorder path has no encoder callback, so count drawn frames instead of reporting 0.
+      var outDur=reportFrames/fps;
+      var fpsMeasured=elapsed>0 ? (reportFrames/elapsed) : 0;
+      var realtime=elapsed>0 ? (outDur/elapsed) : 0;
+      $("progress").textContent="Done. Frames: "+reportFrames+", time: "+elapsed.toFixed(1)+"s, fps: "+fpsMeasured.toFixed(1)+", realtime factor: "+realtime.toFixed(2)+"×";
+      $("summary").textContent="Input: "+srcDuration.toFixed(1)+"s ("+srcW+"×"+srcH+") → Output: "+outDur.toFixed(1)+"s ("+cw+"×"+ch+"). Render time "+elapsed.toFixed(1)+"s. Encoder path: "+encPath+". Report these numbers (time, fps, path, output format) to compare with the VM render.";
+      log("Finished: frames="+reportFrames+", elapsed="+elapsed.toFixed(1)+"s, fps="+fpsMeasured.toFixed(1)+", realtime="+realtime.toFixed(2)+"×, path="+encPath);
+      var link=$("downloadLink");
+      if (useWebCodecs){
+        if ((!sps || !pps) && lastDesc){
+          var late=parseAvccDescription(lastDesc);
+          if (late.sps && late.pps){ sps=late.sps; pps=late.pps; log("SPS/PPS recovered at finish from decoderConfig description."); }
+        }
+        if (!sps || !pps){
+          log("ERROR: SPS/PPS never captured — MP4 mux cannot run. Saving raw H.264 stream instead (play with VLC, or mux later with ffmpeg).");
+          try{
+            var rawParts=[];
+            samples.forEach(function(s){
+              var d=s.data; var off=0;
+              while (off+4 <= d.length){
+                var len=(d[off]<<24)|(d[off+1]<<16)|(d[off+2]<<8)|d[off+3]; off+=4;
+                if (len<=0 || off+len>d.length) break;
+                rawParts.push(new Uint8Array([0,0,0,1])); rawParts.push(d.slice(off, off+len)); off+=len;
+              }
+            });
+            var rawBlob=new Blob(rawParts, {type:"video/h264"});
+            var rawUrl=URL.createObjectURL(rawBlob); link.href=rawUrl; link.download="phone-render.h264";
+            link.textContent="⬇ Download rendered video (RAW H.264, "+(rawBlob.size/1048576).toFixed(1)+" MB — MP4 mux failed, see log)"; link.style.display="block";
+          }catch(err){ log("Raw fallback failed: "+err.message); }
+        }
+        else {
+          try{
+            var mp4=buildMP4(samples, cw, ch, sps, pps);
+            var blob=new Blob([mp4], {type:"video/mp4"}); var url=URL.createObjectURL(blob);
+            link.href=url; link.download="phone-render.mp4"; link.textContent="⬇ Download rendered video (MP4, "+(mp4.length/1048576).toFixed(1)+" MB)"; link.style.display="block";
+            log("MP4 muxed: "+mp4.length+" bytes, samples="+samples.length);
+          }catch(err){ log("MP4 mux failed: "+err.message+" — file NOT claimed as MP4. No download created from WebCodecs path."); }
+        }
+      } else {
+        var blob=new Blob(recChunks, {type:recMime||"video/webm"});
+        var ext = (recMime && recMime.indexOf("mp4")>=0) ? "mp4" : "webm";
+        var url=URL.createObjectURL(blob); link.href=url; link.download="phone-render."+ext;
+        link.textContent="⬇ Download rendered video ("+ext.toUpperCase()+", "+(blob.size/1048576).toFixed(1)+" MB, mime="+ (recMime||"default")+")"; link.style.display="block";
+        log("MediaRecorder output: "+blob.size+" bytes, mime="+(recMime||"default")+", ext="+ext);
+      }
+      running=false; renderStartPerf=0; $("cancelBtn").disabled=true;
+    })();
+  }
+  // requestVideoFrameCallback loop
+  function onFrame(now, metadata){
+    if (done || cancelFlag){ finish(); return; }
+    if (v.ended || v.currentTime >= srcDuration - 0.05){
+      if (encoder && encodedFrames>0){ finish(); return; }
+      if (!encoder){ finish(); return; }
+    }
+    drawFrame(ctx, v, cw, ch, blurCanvas, blurCtx);
+    drawnFrames++;
+    if (encoder){
+      try{ var vf=new VideoFrame(canvas, {timestamp: Math.round(encodedFrames*1000000/fps)}); encoder.encode(vf); vf.close(); }catch(e){ log("Encode error: "+e.message); finish(); return; }
+    }
+    var elapsed=(performance.now()-startTime)/1000;
+    var progressFrames = encoder ? encodedFrames : drawnFrames;
+    var fpsNow=elapsed>0 ? (progressFrames/elapsed) : 0;
+    $("progress").textContent="Rendering… "+Math.min(100, Math.round(v.currentTime/srcDuration*100))+"% — frames "+progressFrames+", elapsed "+elapsed.toFixed(1)+"s, fps "+fpsNow.toFixed(1);
+    if (!v.ended && !cancelFlag) v.requestVideoFrameCallback(onFrame);
+    else finish();
+  }
+  if (typeof v.requestVideoFrameCallback === "function") v.requestVideoFrameCallback(onFrame);
+  else { log("requestVideoFrameCallback not available — this browser cannot do frame-accurate WebCodecs rendering. Use Chrome Android."); finish(); }
+  // Safety: if video ends without rVFC firing, finish via ended event
+  v.onended=function(){ if(!done) finish(); };
+});
+</script>
+</body>
+</html>
