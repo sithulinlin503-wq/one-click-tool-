@@ -434,7 +434,7 @@ $("fileInput").addEventListener("change", function(){
   srcFile=this.files[0]; if(!srcFile) return;
   if (srcFile.type && srcFile.type.indexOf("video/") !== 0){ log("WARNING: chosen file type is '"+srcFile.type+"' — it may not be a video. Choose an MP4 video file."); }
   var v=$("srcVideo");
-  v.onerror=function(){ srcW=0; srcH=0; $("srcInfo").textContent="Video load မအောင်ဘူး — ဒီ file ကို browser က ဖွင့်လို့မရဘူး။ တခြား MP4 file တခု ပြန်ရွေးပါ။"; log("ERROR: video element failed to load this file (no supported sources). Choose another MP4."); };
+  v.onerror=function(){ srcW=0; srcH=0; $("srcInfo").textContent="Video load မအောင်ဘူး — Chrome က ဒီ file ရဲ့ codec ကို ဖွင့်လို့မရဘူး။ Gallery မှာ ရပြီး Chrome မှာ မရရင် ဒီ file က HEVC (H.265) ဖြစ်ဖို့ များတယ် (Chrome Android က HEVC ကို လက်မခံဘူး, tool ပျက်တာမဟုတ်ဘူး)။ ဖြေရှင်းချက်: CapCut မှာ ဒီ video ကို ဖွင့် → Export လုပ်ပါ (exported file က H.264 ဖြစ်သွားမယ်) → အဲဒီ exported file ကို ဒီမှာ ပြန်ရွေးပါ။ ဒါမှမဟုတ် ဖုန်းနဲ့ တိုက်ရိုက်ရိုက်ထားတဲ့ H.264 video တခု စမ်းပါ။"; log("ERROR: video element failed to load this file (no supported sources). Likely HEVC/H.265: plays in Gallery (hardware decoder) but Chrome Android does not decode HEVC. Fix: re-export via CapCut to H.264, then choose the exported file."); };
   v.src=URL.createObjectURL(srcFile);
   v.onloadedmetadata=function(){
     srcDuration=v.duration; srcW=v.videoWidth; srcH=v.videoHeight;
@@ -668,7 +668,7 @@ $("audioFile").addEventListener("change", function(){
 $("cancelBtn").addEventListener("click", function(){ cancelFlag=true; log("Cancel requested — stopping at next frame."); });
 $("renderBtn").addEventListener("click", async function(){
   if (!srcFile){ alert("Video file မရွေးရသေးဘူး — အရင် Choose video file နှိပ်ပြီး video တပုဒ် ရွေးပါ, Preview မှာ ပထမ frame ပေါ်လာတဲ့အထိ စောင့်ပါ။"); log("ERROR: Start pressed with no video file — choose a file first and wait for the preview."); return; }
-  if (!srcW || !srcH || !isFinite(srcDuration) || srcDuration <= 0){ alert("Video file ကို load လုပ်နေတုန်း / load မအောင်သေးဘူး — Preview မှာ frame ပေါ်လာတဲ့အထိ စောင့်ပါ, မပေါ်ရင် တခြား MP4 file တခု ပြန်ရွေးပါ။"); log("ERROR: Start pressed but video metadata not loaded (srcW="+srcW+", srcH="+srcH+", duration="+srcDuration+") — wait for preview, or choose another MP4."); return; }
+  if (!srcW || !srcH || !isFinite(srcDuration) || srcDuration <= 0){ alert("Video load မအောင်သေးဘူး — Preview မှာ frame ပေါ်လာတဲ့အထိ စောင့်ပါ။ မပေါ်ရင် ဒီ file က HEVC (H.265) ဖြစ်နိုင်တယ်: CapCut မှာ Export လုပ်ပြီး H.264 file ကို ပြန်ရွေးပါ။"); log("ERROR: Start pressed but video metadata not loaded (srcW="+srcW+", srcH="+srcH+", duration="+srcDuration+") — wait for preview, or re-export via CapCut to H.264 if the file is HEVC."); return; }
   if (running) return; running=true; cancelFlag=false; renderStartPerf=performance.now();
   $("cancelBtn").disabled=false; $("downloadLink").style.display="none";
   var startTime=performance.now();
