@@ -57,7 +57,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v21-skip-audio, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v22-one-click, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
 <p class="small">Tabs: <b>Video</b> → <b>Voice</b> → <b>Captions</b> → <b>Extras</b> (key + steps). Then tap <b>▶ Start render</b> in the bottom bar once — one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server) and does NOT call any VM. <b>Input is a local video file from this phone.</b> The new main flow is one tap: Start Processing auto-transcribes the video audio with YOUR OWN Gemini key (no Whisper runs in this browser — transcription is a Gemini audio call from this browser to Google, using only your key), turns it into a natural Burmese script, generates Gemini narration voice, then renders on this phone CPU only. Without a key, Start Processing cannot do the auto script/voice — use the Manual / advanced path below instead (paste a script, upload audio, old Start render). MP4, MOV and MKV are accepted; any file Chrome cannot play is auto-converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see step 2.</p>
@@ -378,7 +378,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v21-skip-audio, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v22-one-click, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -1014,7 +1014,7 @@ function loadVideoFile(file, alreadyConverted){
   // set just before that call and must survive the load.
   hevcRetryAttempted=false;
   if (!alreadyConverted){
-    hevcAutoAttempted=false; hevcRemuxAttempted=false; hevcRemuxPending=false; hevcAacfixAttempted=false; hevcAacfixPending=false; hevcAacfixMode=false; hevcNoaudioAttempted=false; hevcNoaudioPending=false; hevcNoaudioMode=false;
+    hevcAutoAttempted=false; hevcRemuxAttempted=false; hevcRemuxPending=false; hevcAacfixAttempted=false; hevcAacfixPending=false; hevcAacfixMode=false; hevcNoaudioAttempted=false; hevcNoaudioPending=false; hevcNoaudioMode=false; hevcOriginalFile=null;
     $("convertedDownloadLink").style.display="none";
     $("convertedSaveInfo").style.display="none";
     if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} convertedDownloadUrl=null; }
@@ -1517,22 +1517,58 @@ function autoSetProgress(msg){
   log("AUTO: "+msg);
 }
 async function autoTranscribeWithGemini(){
-  // Extract audio in-browser with ffmpeg.wasm (already used for
-  // Convert; no new CDN, no server). AAC is built into the core;
-  // MP3 encoding is not relied on.
+  // v22 ONE-CLICK fix (2026-10-30, proven 03:17): the loaded file
+  // may be a -noaudio.mp4 video-only file (v21 skip-audio solved
+  // the <video> load, 576x768 422.6s metadata fired), but that
+  // file has NO audio track, so extracting audio from srcFile
+  // fails with "Output file #0 does not contain any stream"
+  // and the chain used to stop at the Manual paste step — extra
+  // work the user refuses. ffmpeg.wasm can demux the ORIGINAL
+  // file's AAC track fine even though Chrome <video> cannot,
+  // so transcription extracts from hevcOriginalFile (the file
+  // first chosen before skip-audio) while render still uses
+  // the noaudio video file for frames. srcFile is NEVER mutated
+  // here. Only if no original file is available in this page
+  // session (saved -noaudio chosen directly on a fresh page)
+  // does this throw the honest original-needed error.
   var ff=await loadHevcWasm();
-  var extMatch=(srcFile.name||"video.mp4").match(/\.([A-Za-z0-9]+)$/);
-  var inExt=extMatch ? extMatch[1].toLowerCase() : "mp4";
-  if (["mp4","mov","mkv","m4v","webm"].indexOf(inExt) < 0) inExt="mp4";
-  var inName="auto_in."+inExt;
-  var inputData=await hevcUtil.fetchFile(srcFile);
-  await ff.writeFile(inName, inputData);
-  var ret=await ff.exec(["-i",inName,"-vn","-c:a","aac","-b:a","32k","-ar","16000","-ac","1","auto_audio.m4a"], -1);
-  if (ret !== 0) throw new Error("audio extraction failed (ffmpeg ret="+ret+")");
-  var audioData=await ff.readFile("auto_audio.m4a");
-  try{ await ff.deleteFile(inName); await ff.deleteFile("auto_audio.m4a"); }catch(e){}
-  var audioBytes=audioData.slice ? audioData.slice() : audioData;
-  if (!audioBytes || !audioBytes.length) throw new Error("extracted audio is empty (0 bytes)");
+  var isNoaudioSrc=/-noaudio\.mp4$/i.test(srcFile.name||"");
+  var audioSrcFile=srcFile;
+  if (isNoaudioSrc){
+    if (hevcOriginalFile && hevcOriginalFile.name !== srcFile.name){
+      audioSrcFile=hevcOriginalFile;
+      log("v22 AUTO TRANSCRIBE: loaded file is video-only (-noaudio), extracting audio from the ORIGINAL file ("+audioSrcFile.name+") for transcription — render still uses the noaudio video for frames.");
+    } else {
+      throw new Error("video-only file မှာ audio မပါဘူး, transcription အတွက် original file လိုတယ် — original file ကို ပြန်ရွေးပြီး ▶ Start render တခါ နှိပ်ပါ (original file ကနေ audio ထုတ်ပြီး, noaudio video နဲ့ render လုပ်မယ်)");
+    }
+  }
+  async function extractFrom(file){
+    var extMatch=(file.name||"video.mp4").match(/\.([A-Za-z0-9]+)$/);
+    var inExt=extMatch ? extMatch[1].toLowerCase() : "mp4";
+    if (["mp4","mov","mkv","m4v","webm"].indexOf(inExt) < 0) inExt="mp4";
+    var inName="auto_in."+inExt;
+    var inputData=await hevcUtil.fetchFile(file);
+    await ff.writeFile(inName, inputData);
+    var ret=await ff.exec(["-i",inName,"-vn","-c:a","aac","-b:a","32k","-ar","16000","-ac","1","auto_audio.m4a"], -1);
+    if (ret !== 0) throw new Error("audio extraction failed (ffmpeg ret="+ret+")");
+    var audioData=await ff.readFile("auto_audio.m4a");
+    try{ await ff.deleteFile(inName); await ff.deleteFile("auto_audio.m4a"); }catch(e){}
+    var bytes=audioData.slice ? audioData.slice() : audioData;
+    if (!bytes || !bytes.length) throw new Error("extracted audio is empty (0 bytes)");
+    return bytes;
+  }
+  var audioBytes;
+  try{
+    audioBytes=await extractFrom(audioSrcFile);
+  }catch(e){
+    // Loaded file has no usable audio but an original exists
+    // (e.g. a converted file that stripped audio): retry once
+    // from the original before giving up — still one tap.
+    if (audioSrcFile === srcFile && hevcOriginalFile && hevcOriginalFile.name !== srcFile.name){
+      log("v22 AUTO TRANSCRIBE: extraction from loaded file failed ("+e.message+"), retrying from the original file ("+hevcOriginalFile.name+")…");
+      audioBytes=await extractFrom(hevcOriginalFile);
+    } else { throw e; }
+  }
   if (audioBytes.length > 18*1024*1024) throw new Error("extracted audio is too large for in-browser Gemini transcription ("+(audioBytes.length/1048576).toFixed(1)+" MB) — paste a script in the Manual path instead");
   var b64=bytesToBase64(audioBytes);
   // Gemini audio understanding: gemini-2.5-flash accepts audio
@@ -1651,9 +1687,30 @@ var captionBoldEl=$("captionBold"); if (captionBoldEl) captionBoldEl.addEventLis
 var captionBoxEl=$("captionBox"); if (captionBoxEl) captionBoxEl.addEventListener("change", function(){ redrawPreview(); });
 $("startProcessingBtn").addEventListener("click", async function(){
   if (running){ autoSetProgress("Render already running — please wait for it to finish."); return; }
-  if (hevcConverting){ autoSetProgress("Convert still running — please wait for it to finish, then tap Start Processing again."); return; }
   if (!srcFile){ alert("Video file မရွေးရသေးဘူး — အဆင့် 2 မှာ video တပုဒ် အရင်ရွေးပါ, Preview မှာ ပထမ frame ပေါ်လာတဲ့အထိ စောင့်ပါ။"); autoSetProgress("No video yet — choose a video in step 2 first."); return; }
-  if (!srcW || !srcH || !isFinite(srcDuration) || srcDuration <= 0){ alert("Video load မအောင်သေးဘူး — Preview မှာ frame ပေါ်လာတဲ့အထိ စောင့်ပါ။"); autoSetProgress("Video not loaded yet — wait for the Preview frame, then tap Start Processing again."); return; }
+  // v22 ONE-CLICK: if the video has not loaded yet (e.g. an
+  // AAC-error original that Chrome <video> refuses), do NOT
+  // demand another tap. Run the skip-audio step as part of
+  // this same tap (original -> video-only noaudio load, or
+  // full convert if that also fails), then wait for metadata
+  // and continue the chain below. If a convert is already
+  // running (auto-convert on file choice), just wait for it
+  // instead of starting a second one.
+  if (!srcW || !srcH || !isFinite(srcDuration) || srcDuration <= 0){
+    if (!hevcConverting){
+      autoSetProgress("Video load မအောင်သေးဘူး — audio ကျော်ပြီး video-only file လုပ်နေတယ်, ပြီးရင် auto chain ဆက်မယ် (ထပ်နှိပ်စရာ မလို)…");
+      log("v22 ONE-CLICK: video not loaded yet, running skip-audio as part of this tap for "+srcFile.name);
+      try{ await convertHevcToH264(false, true, true, false); }catch(ce){ log("v22 skip-audio step error (continuing to wait for metadata): "+ce.message); }
+    } else {
+      autoSetProgress("Convert လုပ်နေတုန်း — ပြီးတာနဲ့ auto chain ဆက်မယ် (ထပ်နှိပ်စရာ မလို)…");
+    }
+    var waitedMs=0;
+    while ((!srcW || !srcH || !isFinite(srcDuration) || srcDuration <= 0) && waitedMs < 300000){
+      await new Promise(function(r){ setTimeout(r, 1000); }); waitedMs+=1000;
+      if (!hevcConverting && (!srcW || !srcH || !isFinite(srcDuration) || srcDuration <= 0) && waitedMs > 5000) break;
+    }
+    if (!srcW || !srcH || !isFinite(srcDuration) || srcDuration <= 0){ alert("Video load မအောင်သေးဘူး — Preview မှာ frame ပေါ်လာတဲ့အထိ စောင့်ပါ။"); autoSetProgress("Video not loaded yet — wait for the Preview frame, then tap Start Processing again."); return; }
+  }
   var key=geminiKey();
   if (!key){
     autoSetProgress("Gemini key လိုတယ် — အဆင့် 1 မှာ ကိုယ့် AI Studio key အရင်ထည့်ပြီး Save လုပ်ပါ, ပြီးမှ Start Processing ပြန်နှိပ်ပါ။ Key မရှိရင် Manual / advanced path ကို သုံးပါ (script paste လုပ်, audio upload လုပ်, old Start render နှိပ်) — key မရှိဘဲ အသံမပါတဲ့ video ကို narrated video လို့ မထုတ်ပေးဘူး။");
@@ -1686,7 +1743,7 @@ $("startProcessingBtn").addEventListener("click", async function(){
     }catch(e){
       log("AUTO TTS FAILED: "+e.message+" — falling back to original video audio for this render (subtitles from the auto script, original sound, no fake narration).");
       autoSetProgress("Gemini voice မရဘူး ("+e.message+") — original video audio နဲ့ render ဆက်လုပ်မယ် (subtitle က auto script, အသံက original)။");
-      $("audioMode").value="original"; updateAudioNote();
+      if (/-noaudio\.mp4$/i.test(srcFile.name||"")){ $("audioMode").value="silent"; } else { $("audioMode").value="original"; } updateAudioNote();
     }
     autoSetProgress("Step 4/4: Rendering on this phone CPU only… progress below, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ။");
     // Mirror the render progress into the single auto progress line.
@@ -1702,7 +1759,11 @@ $("startProcessingBtn").addEventListener("click", async function(){
     // Honest fallback: transcription or script generation failed.
     // Never fake it — open the Manual path and stop the chain.
     log("AUTO CHAIN STOPPED: "+(e && e.message ? e.message : e));
-    autoSetProgress("Auto-transcription / script မရဘူး: "+(e && e.message ? e.message : e)+" — အဲဒါကို အတုမလုပ်ပေးဘူး။ Manual / advanced path ကို ဖွင့်ထားပြီ: အဲဒီမှာ script ကို paste လုပ်ပြီး Start Processing ကို ပြန်နှိပ်ပါ (paste လုပ်ထားတဲ့ script ကို သုံးပြီး voice + render အလိုအလျောက် ဆက်လုပ်မယ်), ဒါမှမဟုတ် old Start render ကို တိုက်ရိုက် နှိပ်ပါ။");
+    if ((e && e.message ? e.message : "").indexOf("original file လိုတယ်") >= 0){
+      autoSetProgress("Auto-transcription မရဘူး: "+e.message+" — အဲဒါကို အတုမလုပ်ပေးဘူး။");
+    } else {
+      autoSetProgress("Auto-transcription / script မရဘူး: "+(e && e.message ? e.message : e)+" — အဲဒါကို အတုမလုပ်ပေးဘူး။ Manual / advanced path ကို ဖွင့်ထားပြီ: အဲဒီမှာ script ကို paste လုပ်ပြီး Start Processing ကို ပြန်နှိပ်ပါ (paste လုပ်ထားတဲ့ script ကို သုံးပြီး voice + render အလိုအလျောက် ဆက်လုပ်မယ်), ဒါမှမဟုတ် old Start render ကို တိုက်ရိုက် နှိပ်ပါ။");
+    }
     try{ var md=$("manualDetails"); if (md) md.open=true; showTab("extras"); }catch(err){}
   }
 });
