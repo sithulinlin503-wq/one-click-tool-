@@ -21,7 +21,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Blogspot Tool (phone render)</h1>
-<p class="small"><b>Version: blogspot-v5-save-converted, 2026-10-29.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser. MP4, MOV and MKV files are all accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, single-thread core, no CapCut needed) — see section 1.</p>
+<p class="small"><b>Version: blogspot-v6-converted-diag, 2026-10-29.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser. MP4, MOV and MKV files are all accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, single-thread core, no CapCut needed) — see section 1.</p>
 <p class="small"><b>Blogspot truth, read first:</b> Blogspot hosts static files only. This page CANNOT download a link (YouTube/TikTok block browser downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server here), and does NOT call any VM (the VM tunnel is blocked). <b>Input is a local video file from this phone.</b> Narration script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only.</p>
 <p id="audioModeNote" class="small"></p>
 <p class="small">Workflow on this page, in order: <b>1</b> choose a local video file → <b>2</b> write/paste Burmese narration, auto-split into timed segments, edit them → <b>3</b> (optional) Gemini script / Gemini TTS with your own key → <b>4</b> choose narration audio (Gemini TTS / uploaded audio / original / silent) → <b>5</b> drag blur + subtitle on the Preview at the top, set font → <b>6</b> Start render → download the MP4. Keep this page open and on screen during render.</p>
@@ -256,7 +256,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v5-save-converted, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v6-converted-diag, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -434,7 +434,18 @@ function applySegmentEdits(){
   renderSegmentsText(); redrawPreview();
   log("Segment edits applied: "+segments.length+" segments.");
 }
-// ---------- Convert support (blogspot-v5-save-converted, 2026-10-29) ----------
+// ---------- Convert support (blogspot-v6-converted-diag, 2026-10-29) ----------
+// v6 changes (converted-file load failure): (1) handlers are attached
+// BEFORE src and the <video> element is explicitly reset
+// (removeAttribute("src") + load()) before a converted blob is
+// attached, so a previous failed load cannot poison the second
+// load; (2) WASM output is validated (non-empty + ftyp header) and
+// copied via slice() before Blob/File creation, so a corrupt or
+// empty WASM output can never reach <video> disguised as a valid
+// MP4; (3) a converted-load failure now reports size + ffmpeg ret
+// + video error code, keeps Convert available, and keeps the Save
+// link visible for a Gallery test — it never says "try another
+// video" anymore.
 // SAVE THE CONVERTED FILE: after a successful conversion, section 1
 // shows a download link for the converted H.264 MP4, so the user
 // converts ONCE and reuses the saved file next time instead of
@@ -577,13 +588,26 @@ async function convertHevcToH264(){
     // wants long videos in one go — slow, not capped.
     var ret=await ff.exec(["-i",inName,"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf","23","-pix_fmt","yuv420p","-vf","scale='min(1280,iw)':-2","-movflags","+faststart","-c:a","aac","-b:a","128k","-threads","1","output.mp4"], -1);
     if (ret !== 0) throw new Error("ffmpeg exited with code "+ret+" (no output produced).");
-    var outData=await ff.readFile("output.mp4");
+    var outDataRaw=await ff.readFile("output.mp4");
+    // Converted-output validation (v6 fix): never feed an empty or
+    // non-MP4 blob to <video> — that used to surface as the
+    // misleading "converted file load failed, try another video".
+    // Defensive copy: slice() gives a standalone Uint8Array with
+    // byteOffset 0, so no WASM-transfer view/offset quirk can
+    // leak into the Blob (plain Blob([view]) is correct in
+    // principle — Node round-trip test proved it byte-identical —
+    // but a copy removes that whole class of doubt for free).
+    var outData=outDataRaw.slice ? outDataRaw.slice() : outDataRaw;
+    if (!outData || !outData.length) throw new Error("ffmpeg returned code 0 but output.mp4 is empty (0 bytes) — conversion produced nothing.");
+    if (outData.length < 8 || outData[4]!==0x66 || outData[5]!==0x74 || outData[6]!==0x79 || outData[7]!==0x70) throw new Error("ffmpeg output is not an MP4 (missing ftyp header, "+outData.length+" bytes) — the WASM transcode produced an unreadable file, not a playable MP4.");
     var outBlob=new Blob([outData], {type:"video/mp4"});
+    window.__convertedDiag={size:outBlob.size, ret:ret, name:""};
     // Sanitised output name: strip the original extension, drop
     // characters Android/Chrome download cannot use in a filename,
     // then add -h264.mp4 (e.g. "my video.mov" -> "my video-h264.mp4").
     var outName=srcFile.name.replace(/\.[^.]+$/, "").replace(/[\\\/:*?"<>|]/g, "_").trim() || "converted";
     outName+="-h264.mp4";
+    if (window.__convertedDiag) window.__convertedDiag.name=outName;
     try{ await ff.deleteFile(inName); await ff.deleteFile("output.mp4"); }catch(e){}
     log("Convert done: "+outBlob.size+" bytes -> "+outName+" — feeding converted file back into the normal load pipeline, and offering it as a download so it only ever needs converting once.");
     // Save-the-converted-file: blob URL + <a download> saves to
@@ -628,19 +652,41 @@ function loadVideoFile(file, alreadyConverted){
   // and let the <video> error handler (below) offer Convert.
   if (!srcFile.type || srcFile.type.indexOf("video/") !== 0){ log("NOTE: chosen file type is '"+(srcFile.type||"unknown")+"' — attempting to load anyway (MP4/MOV/MKV are all accepted; a non-video type only matters if <video> fails, which shows Convert)."); }
   var v=$("srcVideo");
+  // v6 fix — handlers BEFORE src, plus an explicit reset: reusing
+  // one <video> element after a failed load can leave it in an
+  // error state on some Chrome Android builds, and assigning src
+  // alone does not always clear it. removeAttribute+load() forces
+  // a clean state before the new (converted) blob is attached.
+  // Handlers are also attached before src now (previously src was
+  // set before onloadedmetadata existed — a fast local blob could
+  // in principle fire before its handler was registered).
   v.onerror=function(){
     srcW=0; srcH=0;
+    var errCode="?", errMsg="";
+    try{ if (v.error){ errCode=v.error.code; errMsg=v.error.message||""; } }catch(e){}
     if (alreadyConverted){
-      $("srcInfo").textContent="Converted H.264 file တောင် load မရဘူး — ဒီ file က ပျက်နေတာ / browser လက်မခံတဲ့ format ဖြစ်နိုင်တယ်။ တခြား video တခု စမ်းပါ။";
-      log("ERROR: even the converted H.264 file failed to load in <video> — not an HEVC issue anymore.");
-      hideHevcConvert();
+      // v6 diagnostics (NOT "try another video"): the converted
+      // output was already validated as a non-empty MP4 with an
+      // ftyp header before it got here, so a load failure here
+      // is a <video>/blob problem, not proof the output is
+      // corrupt. Keep Convert available (do NOT hide it) and
+      // keep the Save link visible: playing the saved file in
+      // Gallery distinguishes "output is corrupt" from "<video>
+      // refuses this blob". Report size + ret + error code.
+      var dg=window.__convertedDiag||{};
+      var diagText="Converted H.264 file load မရဘူး — ဒါပေမယ့် converted output ကို အရင် စစ်ပြီးပြီ (size="+(dg.size||"?")+" bytes, ffmpeg ret="+(dg.ret!==undefined?dg.ret:"?")+", video error code="+errCode+(errMsg?" ("+errMsg+")":"")+")။ ဒါက output ပျက်တာ ဖြစ်နိုင်သလို, <video> က ဒီ blob ကို လက်မခံတာလည်း ဖြစ်နိုင်တယ်။ အပေါ်က ⬇️ Save link နဲ့ converted file ကို သိမ်းပြီး Gallery မှာ ဖွင့်ကြည့်ပါ — Gallery မှာ ရရင် output မှန်တယ်, <video> load ပဲ ပြဿနာပါ။ ဒီ diagnostic စာသား (size / ret / error code) အတိုင်း ပြန်ပြောပေးပါ, တခြား video စမ်းစရာ မလိုဘူး။";
+      $("srcInfo").textContent=diagText;
+      log("ERROR: converted H.264 file failed to load in <video> (size="+(dg.size||"?")+", ffmpeg ret="+(dg.ret!==undefined?dg.ret:"?")+", video error code="+errCode+"). Output was validated as non-empty MP4 with ftyp before load, so this is a <video>/blob issue or a Chrome codec rejection, not a proven corrupt output. Save link kept visible for a Gallery test.");
+      // Deliberately do NOT hideHevcConvert() here: the user must
+      // be able to retry Convert, and the Save link must stay.
+      $("hevcConvertBtn").style.display="inline-block"; $("hevcConvertBtn").disabled=false;
+      if (convertedDownloadUrl){ $("convertedDownloadLink").style.display="block"; $("convertedSaveInfo").style.display="block"; }
     } else {
       $("srcInfo").textContent="Video load မအောင်ဘူး — Chrome က ဒီ file ကို ဖွင့်လို့မရဘူး (MP4 HEVC, MOV/QuickTime, ဒါမှမဟုတ် MKV codec — Gallery မှာ ရပေမယ့် Chrome Android က လက်မခံတာမျိုး)။ အောက်က 🔄 Convert button ကို နှိပ်ပါ — tool က ဖုန်းထဲမှာပဲ H.264 MP4 ပြောင်းပေးမယ်, CapCut မလိုဘူး, file အပြင်ကို မထွက်ဘူး။";
-      log("ERROR: video element failed to load this file (no supported sources). Container/codec Chrome cannot play (HEVC MP4, MOV/QuickTime, or MKV codec). In-tool convert offered for MP4/MOV/MKV (no CapCut needed).");
+      log("ERROR: video element failed to load this file (no supported sources, video error code="+errCode+"). Container/codec Chrome cannot play (HEVC MP4, MOV/QuickTime, or MKV codec). In-tool convert offered for MP4/MOV/MKV (no CapCut needed).");
       showHevcConvert("🔄 Convert button နှိပ်ရင် ဖုန်းထဲမှာပဲ H.264 MP4 ပြောင်းပေးမယ် (MP4 / MOV / MKV အားလုံးရ, ပထမအကြိမ် ffmpeg.wasm ~30MB download လိုတယ်, Wi-Fi ရှိရင် ပိုကောင်း)။ Video အရှည်ဖြစ်ဖြစ် တခါထဲ ပြောင်းလို့ရတယ်, ရှည်ရင် အချိန်ကြာမယ် — page ကို ဖွင့်ထားပါ။");
     }
   };
-  v.src=URL.createObjectURL(srcFile);
   v.onloadedmetadata=function(){
     hideHevcConvert();
     srcDuration=v.duration; srcW=v.videoWidth; srcH=v.videoHeight;
@@ -657,6 +703,11 @@ function loadVideoFile(file, alreadyConverted){
       log("Preview drawn at "+cs.w+"×"+cs.h+" with blur="+$("blurOn").checked+", subtitle position="+$("subPos").value);
     };
   };
+  // Explicit reset + src LAST (v6 fix): clears any previous failed
+  // load's error state before attaching the new blob URL. The old
+  // code set src before onloadedmetadata was even registered.
+  try{ v.removeAttribute("src"); v.load(); }catch(e){}
+  v.src=URL.createObjectURL(srcFile);
 }
 $("fileInput").addEventListener("change", function(){
   loadVideoFile(this.files[0], false);
