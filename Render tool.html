@@ -3,25 +3,40 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Oneclickrecap Blogspot Tool — Phone Render (static, no server)</title>
+<title>Oneclickrecap — Phone Render Tool (static, no server)</title>
 <style>
-  body{font-family:system-ui,-apple-system,"Noto Sans Myanmar",sans-serif;margin:16px auto;max-width:720px;padding:0 12px;color:#111;line-height:1.5}
-  h1{font-size:20px} h2{font-size:16px;margin-top:24px}
-  .warn{border:2px solid #b45309;background:#fff7ed;padding:10px 12px;border-radius:8px}
-  .box{border:1px solid #ccc;border-radius:8px;padding:12px;margin:10px 0}
-  label{display:block;margin:8px 0} input,select,textarea{width:100%;padding:8px;box-sizing:border-box}
-  input[type=checkbox]{width:auto} input[type=range]{width:100%}
-  button{padding:10px 16px;margin:6px 6px 6px 0;font-size:16px}
-  #log{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:8px;font-size:13px;max-height:300px;overflow:auto}
-  #progress{font-size:18px;font-weight:bold}
-  video,canvas{max-width:100%;background:#000}
-  #previewCanvas{touch-action:none;cursor:move}
-  .small{font-size:13px;color:#444}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,"Segoe UI","Noto Sans Myanmar",sans-serif;margin:0 auto;max-width:720px;padding:20px 14px 32px;color:#ffffff;line-height:1.55;background-color:#03050a;background-image:radial-gradient(ellipse 80% 320px at 50% -40px,rgba(0,229,255,0.15),transparent 70%)}
+  h1{font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;margin:8px 0 12px;background:linear-gradient(90deg,#ffffff,#00E5FF);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+  h2{font-size:18px;font-weight:700;margin:8px 0 12px;padding-left:12px;border-left:3px solid #00E5FF}
+  h3{font-size:16px;font-weight:700;color:#ffffff}
+  a{color:#00E5FF}
+  .warn{border:1px solid rgba(238,69,64,0.45);background:rgba(238,69,64,0.10);padding:14px;border-radius:16px;color:#ffffff}
+  .box{border:1px solid rgba(255,255,255,0.20);background:rgba(255,255,255,0.04);border-radius:16px;padding:16px;margin:14px 0;box-shadow:0 8px 24px rgba(0,0,0,0.35)}
+  .preview-box{border-color:rgba(0,229,255,0.55);box-shadow:0 0 0 1px rgba(0,229,255,0.25),0 8px 32px rgba(0,229,255,0.12)}
+  label{display:block;margin:10px 0;font-size:15px}
+  input,select,textarea{width:100%;padding:13px 12px;box-sizing:border-box;font-size:16px;color:#ffffff;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.20);border-radius:10px}
+  input::placeholder,textarea::placeholder{color:#94a3b8}
+  select option{color:#0a0a0a}
+  input[type=checkbox]{width:auto;accent-color:#00E5FF}
+  input[type=range]{width:100%;padding:0}
+  input[type=file]{padding:12px}
+  button{min-height:48px;padding:13px 18px;margin:6px 6px 6px 0;font-size:16px;font-weight:700;border-radius:12px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.08);color:#ffffff;cursor:pointer}
+  button:disabled{opacity:0.45;cursor:default}
+  #renderBtn,#hevcConvertBtn,#autoSplitBtn{display:block !important;width:100% !important;margin:10px 0;background:#00E5FF;border-color:#00E5FF;color:#03050a}
+  #cancelBtn,#delKeyBtn{border-color:rgba(238,69,64,0.65);color:#ff8a86;background:rgba(238,69,64,0.10)}
+  #log{white-space:pre-wrap;background:#0a0f1a;color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);padding:12px;border-radius:12px;font-size:13px;max-height:300px;overflow:auto}
+  #progress{font-size:18px;font-weight:800;color:#00E5FF}
+  video,canvas{max-width:100%;background:#000;border-radius:12px}
+  #previewCanvas{touch-action:none;cursor:move;width:100%}
+  .small{font-size:13px;color:#cbd5e1}
+  .footer{margin-top:20px;text-align:center;color:#94a3b8}
+  summary{font-size:16px;cursor:pointer}
 </style>
 </head>
 <body>
-<h1>📱 Oneclickrecap — Blogspot Tool (phone render)</h1>
-<p class="small"><b>Version: blogspot-v6-converted-diag, 2026-10-29.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser. MP4, MOV and MKV files are all accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, single-thread core, no CapCut needed) — see section 1.</p>
+<h1>📱 Oneclickrecap — Phone Render Tool</h1>
+<p class="small"><b>Version: blogspot-v7-ui-dark, 2026-10-29.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser. MP4, MOV and MKV files are all accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, single-thread core, no CapCut needed) — see section 1.</p>
 <p class="small"><b>Blogspot truth, read first:</b> Blogspot hosts static files only. This page CANNOT download a link (YouTube/TikTok block browser downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server here), and does NOT call any VM (the VM tunnel is blocked). <b>Input is a local video file from this phone.</b> Narration script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only.</p>
 <p id="audioModeNote" class="small"></p>
 <p class="small">Workflow on this page, in order: <b>1</b> choose a local video file → <b>2</b> write/paste Burmese narration, auto-split into timed segments, edit them → <b>3</b> (optional) Gemini script / Gemini TTS with your own key → <b>4</b> choose narration audio (Gemini TTS / uploaded audio / original / silent) → <b>5</b> drag blur + subtitle on the Preview at the top, set font → <b>6</b> Start render → download the MP4. Keep this page open and on screen during render.</p>
@@ -34,7 +49,7 @@ Battery / heat warning: hardware encoding uses the phone's encoder and will warm
 This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee the browser keeps rendering if you leave the page.
 </div>
 
-<div class="box">
+<div class="box preview-box">
 <h2>Preview — အပေါ်ဆုံး (ချိန်တိုင်း ဒီမှာ ချက်ချင်း မြင်ရမယ်)</h2>
 <canvas id="previewCanvas"></canvas>
 <p class="small"><b>Blur box + စာတန်းကို လက်နဲ့ ဆွဲ၍ ရွှေ့နိုင်တယ်:</b> Preview ပေါ်က blur box ထဲကို ထိပြီး ဆွဲပါ (blur position), box ရဲ့ အောက်ညာထောင့်ကို ဆွဲရင် blur size။ <b>မြန်မာစာတန်း ပေါ်ကို ထိပြီး ဆွဲရင် စာတန်း position ပြောင်းမယ်</b> (အလိုအလျောက် Custom position ဖြစ်သွားမယ်, subY % ပြောင်းမယ်)။ Font အကြီးအသေးကို အောက်က slider နဲ့ လက်နဲ့ ဆွဲချိန်ပါ, preview မှာ ချက်ချင်း ပေါ်မယ်။ ဆွဲပြီးမှ Start render နှိပ်ပါ။ အောက်က setting တွေပြောင်းတိုင်း preview ဒီအပေါ်မှာ ချက်ချင်း ပြောင်းတယ်, scroll ဆင်းကြည့်စရာ မလိုဘူး။</p>
@@ -147,6 +162,7 @@ This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee t
 
 <h2>Log</h2>
 <pre id="log"></pre>
+<p class="small footer">Oneclickrecap — Phone Render Tool · Static, phone-only — runs entirely in this phone's browser, no server, no upload.</p>
 
 <script>
 "use strict";
@@ -256,7 +272,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v6-converted-diag, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v7-ui-dark, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -434,7 +450,7 @@ function applySegmentEdits(){
   renderSegmentsText(); redrawPreview();
   log("Segment edits applied: "+segments.length+" segments.");
 }
-// ---------- Convert support (blogspot-v6-converted-diag, 2026-10-29) ----------
+// ---------- Convert support (blogspot-v7-ui-dark, 2026-10-29) ----------
 // v6 changes (converted-file load failure): (1) handlers are attached
 // BEFORE src and the <video> element is explicitly reset
 // (removeAttribute("src") + load()) before a converted blob is
