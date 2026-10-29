@@ -57,7 +57,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v15-tabbed, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v16-fresh-element, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
 <p class="small">Tabs: <b>Video</b> → <b>Voice</b> → <b>Captions</b> → <b>Extras</b> (key + steps). Then tap <b>▶ Start render</b> in the bottom bar once — one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server) and does NOT call any VM. <b>Input is a local video file from this phone.</b> The new main flow is one tap: Start Processing auto-transcribes the video audio with YOUR OWN Gemini key (no Whisper runs in this browser — transcription is a Gemini audio call from this browser to Google, using only your key), turns it into a natural Burmese script, generates Gemini narration voice, then renders on this phone CPU only. Without a key, Start Processing cannot do the auto script/voice — use the Manual / advanced path below instead (paste a script, upload audio, old Start render). MP4, MOV and MKV are accepted; any file Chrome cannot play is auto-converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see step 2.</p>
@@ -377,7 +377,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v15-tabbed, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v16-fresh-element, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -781,33 +781,40 @@ function loadVideoFile(file, alreadyConverted){
   // pickers may report nothing at all — attempt the load anyway
   // and let the <video> error handler (below) offer Convert.
   if (!srcFile.type || srcFile.type.indexOf("video/") !== 0){ log("NOTE: chosen file type is '"+(srcFile.type||"unknown")+"' — attempting to load anyway (MP4/MOV/MKV are all accepted; a non-video type only matters if <video> fails, which shows Convert)."); }
-  // v10 second-load fix: the v6 removeAttribute("src")+load() reset
-  // did NOT cure this case — the saved converted file plays in
+  // v16 fresh-element fix (extends v10): the v6
+  // removeAttribute("src")+load() reset did NOT cure this case
+  // for converted loads — the saved converted file plays in
   // Gallery (output valid), yet the SAME <video> element that
   // already failed on the original file still errors on the
-  // converted blob. So for a converted load, discard that element
-  // entirely and use a brand-new one. This is safe: every other
-  // srcVideo use in this file queries $("srcVideo") by id at use
-  // time (redrawPreview, render handler), no code holds a stored
-  // reference to the old element, and no listener is attached
-  // directly to srcVideo (listeners live on previewCanvas, buttons
-  // and inputs). The replacement keeps id/controls/playsinline/
-  // muted and sits in the exact same DOM position.
-  if (alreadyConverted){
-    try{
-      var oldV=$("srcVideo");
-      if (oldV && oldV.parentNode){
-        var oldSrc=""; try{ oldSrc=oldV.src||""; }catch(e){}
-        try{ oldV.pause(); }catch(e){}
-        var newV=document.createElement("video");
-        newV.id="srcVideo"; newV.controls=true; newV.playsInline=true;
-        newV.setAttribute("playsinline",""); newV.muted=true;
-        oldV.parentNode.replaceChild(newV, oldV);
-        if (oldSrc && oldSrc.indexOf("blob:")===0){ try{ URL.revokeObjectURL(oldSrc); }catch(e){} }
-        log("Converted load: replaced <video> element with a fresh one (prior failed-load error state cannot survive a new element).");
-      }
-    }catch(e){ log("WARNING: could not replace <video> element, falling back to the existing one: "+e.message); }
-  }
+  // converted blob. 2026-10-30 evidence proves the SAME bug
+  // hits ORIGINAL loads too: a perfect H.264 file (Constrained
+  // Baseline L31, yuv420p, 480x854, AAC LC, moov before mdat,
+  // avc1.42c01f — Chrome should play it directly) still fired
+  // onerror and started Auto-Convert when chosen AFTER a failed
+  // HEVC file in the same page session. The prior failed-load
+  // error state survives removeAttribute+load() on this Chrome
+  // build, so EVERY new file choice — original AND converted —
+  // now discards the old element entirely and uses a brand-new
+  // one. This is safe: every other srcVideo use in this file
+  // queries $("srcVideo") by id at use time (redrawPreview,
+  // render handler), no code holds a stored reference to the old
+  // element, and no listener is attached directly to srcVideo
+  // (listeners live on previewCanvas, buttons and inputs). The
+  // replacement keeps id/controls/playsinline/muted and sits in
+  // the exact same DOM position. NOT gated on alreadyConverted.
+  try{
+    var oldV=$("srcVideo");
+    if (oldV && oldV.parentNode){
+      var oldSrc=""; try{ oldSrc=oldV.src||""; }catch(e){}
+      try{ oldV.pause(); }catch(e){}
+      var newV=document.createElement("video");
+      newV.id="srcVideo"; newV.controls=true; newV.playsInline=true;
+      newV.setAttribute("playsinline",""); newV.muted=true;
+      oldV.parentNode.replaceChild(newV, oldV);
+      if (oldSrc && oldSrc.indexOf("blob:")===0){ try{ URL.revokeObjectURL(oldSrc); }catch(e){} }
+      log("Fresh <video> element for this file (prior failed-load error state cannot survive a new element).");
+    }
+  }catch(e){ log("WARNING: could not replace <video> element, falling back to the existing one: "+e.message); }
   var v=$("srcVideo");
   // v6 fix — handlers BEFORE src, plus an explicit reset: reusing
   // one <video> element after a failed load can leave it in an
