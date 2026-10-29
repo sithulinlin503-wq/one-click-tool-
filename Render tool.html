@@ -57,7 +57,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v18-video-diag, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v19-aac-fix, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
 <p class="small">Tabs: <b>Video</b> → <b>Voice</b> → <b>Captions</b> → <b>Extras</b> (key + steps). Then tap <b>▶ Start render</b> in the bottom bar once — one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server) and does NOT call any VM. <b>Input is a local video file from this phone.</b> The new main flow is one tap: Start Processing auto-transcribes the video audio with YOUR OWN Gemini key (no Whisper runs in this browser — transcription is a Gemini audio call from this browser to Google, using only your key), turns it into a natural Burmese script, generates Gemini narration voice, then renders on this phone CPU only. Without a key, Start Processing cannot do the auto script/voice — use the Manual / advanced path below instead (paste a script, upload audio, old Start render). MP4, MOV and MKV are accepted; any file Chrome cannot play is auto-converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see step 2.</p>
@@ -377,7 +377,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v18-video-diag, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v19-aac-fix, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -626,6 +626,18 @@ var hevcConverting=false, hevcFFmpeg=null, hevcFFmpegLoading=null, hevcUtil=null
 // once (see loadVideoFile onerror). hevcOriginalFile keeps the original file
 // so the fallback full convert re-encodes the original, not the remuxed copy.
 var hevcRemuxAttempted=false, hevcRemuxPending=false, hevcOriginalFile=null, hevcRemuxMode=false;
+// v19 AAC-fix state: hevcAacfixAttempted = aacfix tried once for the current
+// original file (reset on a new original choice); hevcAacfixPending = an
+// audio-fixed file is currently loading — if THAT file errors, fall back to
+// full convert once (see loadVideoFile onerror). Cause (v18 diag, proven
+// 2026-10-30 on 1000025459.mp4): Chrome error code 4
+// PipelineStatus::DEMUXER_ERROR_DETECTED_AAC while canPlayType says H.264
+// baseline AND high are both "probably" — Chrome's MP4 demuxer rejects the
+// AAC audio track in these downloads, not the video codec. That is why v17
+// copy-remux failed too: -c copy preserves the bad AAC. Re-encoding ONLY
+// the audio to clean AAC LC (-c:v copy, no libx264) keeps the step to
+// seconds even for a long file, and is the correct fix for this error.
+var hevcAacfixAttempted=false, hevcAacfixPending=false, hevcAacfixMode=false;
 // v18 second-attachment retry state: hevcRetryAttempted = the <source>-element
 // retry has already been tried once for the current loadVideoFile call.
 // It is reset at the start of every loadVideoFile call, so each new file
@@ -654,7 +666,8 @@ async function loadHevcWasm(){
     var ff=new ffmpegMod.FFmpeg();
     ff.on("progress", function(p){
       var pct=(p && isFinite(p.progress)) ? Math.round(p.progress*100) : 0;
-      if (hevcRemuxMode){ $("hevcInfo").textContent="Remux လုပ်နေတယ်… "+pct+"% (re-encode မဟုတ် — codec ကို မထိဘဲ container ပဲ ပြန်စီတာ, စက္ကန့်ပိုင်းပဲ ကြာမယ်, page ကို ဖွင့်ထားပါ)"; }
+      if (hevcAacfixMode){ $("hevcInfo").textContent="Audio fix လုပ်နေတယ်… "+pct+"% (video မပြောင်းဘဲ audio ကိုပဲ AAC အသန့် ပြန်ရေးခြင်း, စက္ကန့်ပိုင်း — video re-encode မဟုတ်ဘူး, page ကို ဖွင့်ထားပါ)"; }
+      else if (hevcRemuxMode){ $("hevcInfo").textContent="Remux လုပ်နေတယ်… "+pct+"% (re-encode မလုပ်ဘဲ ပြန်စီခြင်း — codec ကို မထိဘဲ container ပဲ ပြန်စီတာ, စက္ကန့်ပိုင်းပဲ ကြာမယ်, page ကို ဖွင့်ထားပါ)"; }
       else { $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ — ultrafast + 480p သေးတဲ့ file နဲ့ ပိုမြန်အောင် ပြောင်းနေတယ်, ဒီ converted file ကနေ render လုပ်ရင် 480p ထွက်မယ်, 720p မဟုတ်ဘူး)"; }
     });
     ff.on("log", function(l){ if (l && l.message) log("ffmpeg.wasm: "+l.message); });
@@ -717,7 +730,8 @@ async function convertHevcToH264(autoMode){
   // a remux error for an HEVC file would only confuse, since a
   // full convert is the correct next step for it anyway.
   var _skipRemux = (arguments.length > 1 && arguments[1] === true);
-  var _isSavedFile = /-(h264|remux)\.mp4$/i.test(srcFile.name);
+  var _skipAacfix = (arguments.length > 2 && arguments[2] === true);
+  var _isSavedFile = /-(h264|remux|aacfix)\.mp4$/i.test(srcFile.name);
   if (!_skipRemux && !_isSavedFile && !hevcRemuxAttempted && !hevcRemuxPending){
     hevcRemuxAttempted=true; hevcOriginalFile=srcFile; hevcRemuxMode=true;
     $("hevcInfo").textContent="Remux လုပ်နေတယ်… (H.264 file ဖြစ်နိုင်လို့ re-encode မလုပ်ဘဲ container ပဲ အမြန် ပြန်စီမယ်, စက္ကန့်ပိုင်းပဲ ကြာမယ် — ရရင် Convert အရှည် လုံးဝ မလိုဘူး)";
@@ -760,6 +774,70 @@ async function convertHevcToH264(autoMode){
       log("Remux did not produce a usable file ("+(re && re.message ? re.message : re)+") — falling through to the full convert in this same call.");
       try{ await hevcFFmpeg.deleteFile("output.mp4"); }catch(e){}
       $("hevcInfo").textContent=autoMode ? (HEVC_AUTO_MSG+" — remux မရလို့ full Convert လုပ်နေတယ်…") : "Remux မရလို့ full Convert လုပ်နေတယ်…";
+    }
+  }
+  // v19 AAC-FIX (runs between copy-remux and full re-encode, auto and
+  // manual alike): the v18 diagnostic proved the failure is
+  // DEMUXER_ERROR_DETECTED_AAC — Chrome's MP4 demuxer rejects the AAC
+  // track in these downloads, while H.264 itself is "probably"
+  // supported. Copy-remux preserves the bad AAC, so it fails the
+  // same way; a full re-encode works only because it also re-encodes
+  // the audio, at the cost of minutes of video re-encoding. This
+  // step instead copies the video untouched and re-encodes ONLY the
+  // audio to clean AAC LC (-c:v copy, -c:a aac, no libx264), so it
+  // stays seconds even for a long file. It runs whenever copy-remux
+  // has failed for this file (remux failed in this same call, or the
+  // remuxed file failed to load and this call was entered with
+  // skipRemux=true) — it is cheap and harmless for any file, so no
+  // fragile parsing of the diagnostic string is needed to trigger it.
+  // If the aacfix file loads, the slow full convert never runs. If
+  // it also fails to load, the onerror handler falls back to the
+  // full convert once (skipAacfix=true). If ffmpeg aacfix itself
+  // fails (e.g. no audio track, or video is HEVC so a copied video
+  // still cannot play), it falls through silently to the full
+  // convert in THIS call — same silent-fallthrough pattern as remux.
+  if (!_skipAacfix && !_isSavedFile && !hevcAacfixAttempted && !hevcAacfixPending){
+    hevcAacfixAttempted=true; if (!hevcOriginalFile) hevcOriginalFile=srcFile; hevcAacfixMode=true;
+    $("hevcInfo").textContent="Audio fix လုပ်နေတယ်… (video မပြောင်းဘဲ audio ကိုပဲ AAC အသန့် ပြန်ရေးခြင်း, စက္ကန့်ပိုင်း — Chrome က AAC track ကို ငြင်းလို့ audio ပဲ ပြန်ရေးတာ, video re-encode မဟုတ်ဘူး)";
+    log("v19 aacfix: trying video-copy + audio-aac-re-encode for "+srcFile.name+" before any full re-encode (DEMUXER_ERROR_DETECTED_AAC fix).");
+    try{
+      var aff=await loadHevcWasm();
+      var aInputData=await hevcUtil.fetchFile(srcFile);
+      var aExtMatch=srcFile.name.match(/\.([A-Za-z0-9]+)$/);
+      var aInExt=aExtMatch ? aExtMatch[1].toLowerCase() : "mp4";
+      if (["mp4","mov","mkv","m4v","webm"].indexOf(aInExt) < 0) aInExt="mp4";
+      var aInName="input."+aInExt;
+      await aff.writeFile(aInName, aInputData);
+      var aRet=await aff.exec(["-i",aInName,"-map","0:v:0","-map","0:a?","-c:v","copy","-c:a","aac","-b:a","96k","-movflags","+faststart","output.mp4"], -1);
+      if (aRet !== 0) throw new Error("aacfix ffmpeg exited with code "+aRet);
+      var aOutRaw=await aff.readFile("output.mp4");
+      var aOut=aOutRaw.slice ? aOutRaw.slice() : aOutRaw;
+      if (!aOut || !aOut.length) throw new Error("aacfix output empty");
+      if (aOut.length < 8 || aOut[4]!==0x66 || aOut[5]!==0x74 || aOut[6]!==0x79 || aOut[7]!==0x70) throw new Error("aacfix output missing ftyp header");
+      var aBlob=new Blob([aOut], {type:"video/mp4"});
+      var aName=srcFile.name.replace(/\.[^.]+$/, "").replace(/[\\\/:*?"<>|]/g, "_").trim() || "audiofixed";
+      aName+="-aacfix.mp4";
+      try{ await aff.deleteFile(aInName); await aff.deleteFile("output.mp4"); }catch(e){}
+      hevcAacfixMode=false;
+      if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} }
+      convertedDownloadUrl=URL.createObjectURL(aBlob);
+      var aSaveLink=$("convertedDownloadLink");
+      aSaveLink.href=convertedDownloadUrl;
+      aSaveLink.download=aName;
+      aSaveLink.textContent="⬇️ Save audio-fixed file: "+aName+" (video မပြောင်းဘဲ audio ကိုပဲ AAC အသန့် ပြန်ရေးထားတာ — နောက်တခါ ဒီ file ကိုပဲ တိုက်ရိုက်ရွေးပါ, Convert မလိုဘူး)";
+      aSaveLink.style.display="block";
+      $("convertedSaveInfo").style.display="block";
+      $("hevcInfo").textContent="Audio fix ပြီးပြီ — audio-fixed file ကို load လုပ်နေတယ်… အပေါ်က ⬇️ Save link နဲ့ သိမ်းထားပါ။";
+      log("AAC-fix done: "+aBlob.size+" bytes -> "+aName+" — loading it on a fresh <video> element; if it loads, no full convert runs.");
+      hevcAacfixPending=true;
+      hevcConverting=false; $("hevcConvertBtn").disabled=false;
+      loadVideoFile(new File([aBlob], aName, {type:"video/mp4"}), true);
+      return;
+    }catch(ae){
+      hevcAacfixMode=false;
+      log("AAC-fix did not produce a usable file ("+(ae && ae.message ? ae.message : ae)+") — falling through to the full convert in this same call.");
+      try{ if (hevcFFmpeg) await hevcFFmpeg.deleteFile("output.mp4"); }catch(e){}
+      $("hevcInfo").textContent=autoMode ? (HEVC_AUTO_MSG+" — audio fix မရလို့ full Convert လုပ်နေတယ်…") : "Audio fix မရလို့ full Convert လုပ်နေတယ်…";
     }
   }
   try{
@@ -843,7 +921,7 @@ function loadVideoFile(file, alreadyConverted){
   // set just before that call and must survive the load.
   hevcRetryAttempted=false;
   if (!alreadyConverted){
-    hevcAutoAttempted=false; hevcRemuxAttempted=false; hevcRemuxPending=false;
+    hevcAutoAttempted=false; hevcRemuxAttempted=false; hevcRemuxPending=false; hevcAacfixAttempted=false; hevcAacfixPending=false; hevcAacfixMode=false;
     $("convertedDownloadLink").style.display="none";
     $("convertedSaveInfo").style.display="none";
     if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} convertedDownloadUrl=null; }
@@ -940,16 +1018,33 @@ function loadVideoFile(file, alreadyConverted){
       }
     }
     if (alreadyConverted){
+      // v19 aacfix fallback: if the file that just failed IS the
+      // audio-fixed file, it proved audio re-encode alone is not
+      // enough for this file — run the full convert ONCE on the
+      // ORIGINAL file (restored from hevcOriginalFile, so the
+      // output name stays clean), skipping both remux and aacfix.
+      if (hevcAacfixPending){
+        hevcAacfixPending=false;
+        log("Audio-fixed file also failed to load in <video> — falling back to the full convert on the original file.");
+        $("srcInfo").textContent=diagLine+" — Audio-fixed file ပါ load မရဘူး, full Convert ကို သွားနေတယ်။";
+        $("hevcInfo").textContent="Audio fix နဲ့ မရဘူး — full Convert (ultrafast + 480p) လုပ်နေတယ်… page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ";
+        if (hevcOriginalFile) srcFile=hevcOriginalFile;
+        hevcAutoAttempted=true;
+        convertHevcToH264(true, true, true);
+        return;
+      }
       // v17 remux fallback: if the file that just failed IS the
       // remuxed file, it proved remux is not enough for this
-      // Chrome build — run the full convert ONCE on the ORIGINAL
+      // Chrome build — try the v19 audio fix ONCE on the ORIGINAL
       // file (restored from hevcOriginalFile, so the output name
-      // stays clean), instead of leaving the user at a dead end.
+      // stays clean), instead of jumping straight to the slow full
+      // convert. The aacfix call itself falls through to full
+      // convert if audio re-encoding does not help.
       if (hevcRemuxPending){
         hevcRemuxPending=false;
-        log("Remuxed file also failed to load in <video> — falling back to the full convert on the original file.");
-        $("srcInfo").textContent=diagLine+" — Remux file ပါ load မရဘူး, full Convert ကို သွားနေတယ်။";
-        $("hevcInfo").textContent="Remux နဲ့ မရဘူး — full Convert (ultrafast + 480p) လုပ်နေတယ်… page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ";
+        log("Remuxed file also failed to load in <video> — trying the v19 audio fix on the original file before any full convert.");
+        $("srcInfo").textContent=diagLine+" — Remux file ပါ load မရဘူး, audio fix (video မပြောင်းဘဲ audio ကိုပဲ AAC အသန့် ပြန်ရေးခြင်း) ကို သွားနေတယ်။";
+        $("hevcInfo").textContent="Remux နဲ့ မရဘူး — audio fix (စက္ကန့်ပိုင်း) လုပ်နေတယ်… အဲဒါပါ မရမှ full Convert (ultrafast + 480p) လုပ်မယ်, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ";
         if (hevcOriginalFile) srcFile=hevcOriginalFile;
         hevcAutoAttempted=true;
         convertHevcToH264(true, true);
@@ -972,7 +1067,7 @@ function loadVideoFile(file, alreadyConverted){
       $("hevcConvertBtn").style.display="inline-block"; $("hevcConvertBtn").disabled=false;
       if (convertedDownloadUrl){ $("convertedDownloadLink").style.display="block"; $("convertedSaveInfo").style.display="block"; }
     } else {
-      $("srcInfo").textContent=diagLine+" — Video load မအောင်ဘူး — Chrome က ဒီ file ကို ဖွင့်လို့မရဘူး (MP4 HEVC, MOV/QuickTime, ဒါမှမဟုတ် MKV codec — Gallery မှာ ရပေမယ့် Chrome Android က လက်မခံတာမျိုး)။ အောက်က 🔄 Convert button ကို နှိပ်ပါ — tool က ဖုန်းထဲမှာပဲ H.264 MP4 ပြောင်းပေးမယ်, CapCut မလိုဘူး, file အပြင်ကို မထွက်ဘူး။";
+      $("srcInfo").textContent=diagLine+" — Video load မအောင်ဘူး — Chrome က ဒီ file ကို ဖွင့်လို့မရဘူး (MP4 HEVC, MOV/QuickTime, MKV codec, ဒါမှမဟုတ် AAC audio track ကို Chrome demuxer က ငြင်းတာ — Gallery မှာ ရပေမယ့် Chrome Android က လက်မခံတာမျိုး)။ tool က အရင် remux, ပြီးရင် audio fix (video မပြောင်းဘဲ audio ကိုပဲ AAC အသန့် ပြန်ရေးခြင်း), အဲဒါပါ မရမှ full Convert ဆိုတဲ့ အဆင့်တွေနဲ့ အလိုအလျောက် ကြိုးစားမယ်, file အပြင်ကို မထွက်ဘူး။";
       log("ERROR: video element failed to load this file (no supported sources, video error code="+errCode+"). Container/codec Chrome cannot play (HEVC MP4, MOV/QuickTime, or MKV codec). Auto-convert will start for MP4/MOV/MKV (no CapCut needed).");
       // v11 AUTO-CONVERT (hands-off): a newly chosen original file
       // that Chrome cannot play starts the SAME convert flow by
@@ -984,7 +1079,7 @@ function loadVideoFile(file, alreadyConverted){
       // that already loaded (this handler only runs on failure).
       // The 200MB cap is enforced inside convertHevcToH264, which
       // refuses with a plain reason instead of attempting.
-      var isSavedH264 = srcFile && /-(h264|remux)\.mp4$/i.test(srcFile.name);
+      var isSavedH264 = srcFile && /-(h264|remux|aacfix)\.mp4$/i.test(srcFile.name);
       // v.src must already be the chosen file's blob URL: this
       // rules out any spurious error from the pre-src reset
       // (removeAttribute+load() before src is attached).
@@ -1002,6 +1097,7 @@ function loadVideoFile(file, alreadyConverted){
   };
   v.onloadedmetadata=function(){
     if (hevcRemuxPending){ hevcRemuxPending=false; log("Remuxed file loaded OK — no full convert needed."); }
+    if (hevcAacfixPending){ hevcAacfixPending=false; log("Audio-fixed file loaded OK — no full convert needed."); }
     hideHevcConvert();
     srcDuration=v.duration; srcW=v.videoWidth; srcH=v.videoHeight;
     $("srcInfo").textContent="File: "+srcFile.name+" — "+srcW+"×"+srcH+", "+srcDuration.toFixed(1)+"s. Long or short, it renders in one go — Preview above shows the first frame.";
