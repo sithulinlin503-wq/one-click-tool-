@@ -21,7 +21,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Blogspot Tool (phone render)</h1>
-<p class="small"><b>Version: blogspot-v2-hevc, 2026-10-29.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser. HEVC files are converted inside this page (ffmpeg.wasm, single-thread core, no CapCut needed) — see section 1.</p>
+<p class="small"><b>Version: blogspot-v3-hevc-worker, 2026-10-29.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser. HEVC files are converted inside this page (ffmpeg.wasm, single-thread core, no CapCut needed) — see section 1.</p>
 <p class="small"><b>Blogspot truth, read first:</b> Blogspot hosts static files only. This page CANNOT download a link (YouTube/TikTok block browser downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server here), and does NOT call any VM (the VM tunnel is blocked). <b>Input is a local video file from this phone.</b> Narration script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only.</p>
 <p id="audioModeNote" class="small"></p>
 <p class="small">Workflow on this page, in order: <b>1</b> choose a local video file → <b>2</b> write/paste Burmese narration, auto-split into timed segments, edit them → <b>3</b> (optional) Gemini script / Gemini TTS with your own key → <b>4</b> choose narration audio (Gemini TTS / uploaded audio / original / silent) → <b>5</b> drag blur + subtitle on the Preview at the top, set font → <b>6</b> Start render → download the MP4. Keep this page open and on screen during render.</p>
@@ -254,7 +254,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v2-hevc, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). HEVC: tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode, no CapCut needed.");
+log("Blogspot tool version: blogspot-v3-hevc-worker, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). HEVC: tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -432,7 +432,7 @@ function applySegmentEdits(){
   renderSegmentsText(); redrawPreview();
   log("Segment edits applied: "+segments.length+" segments.");
 }
-// ---------- HEVC support (blogspot-v2-hevc, 2026-10-29) ----------
+// ---------- HEVC support (blogspot-v3-hevc-worker, 2026-10-29) ----------
 // Chrome Android does not decode HEVC in <video>/WebCodecs on most
 // devices, so a <video> load failure is NOT a dead end here: the page
 // itself transcodes the chosen file to H.264 with ffmpeg.wasm
@@ -440,12 +440,26 @@ function applySegmentEdits(){
 // COOP/COEP headers that GitHub Pages does not send, so core-mt is
 // deliberately NOT used). No server, no CapCut, no file upload: the
 // file never leaves this phone. One tap on the Convert button.
-// Limits, stated honestly: WASM transcode is slow on a phone and
-// holds input+output in memory, so it is designed for SHORT clips
-// first (<=60s recommended; files over 200 MB are refused with a
-// clear message instead of crashing the tab). Progress is shown;
-// on any failure the button stays available to retry, and CapCut
-// export remains only as a last-resort fallback.
+// CROSS-ORIGIN WORKER FIX (this version): ffmpeg.wasm 0.12 builds
+// its class worker from import.meta.url, which on a plain CDN page
+// resolves to a jsDelivr URL — and a Worker script MUST be
+// same-origin, so Chrome refuses it ("cannot be accessed from
+// origin"). Blobbing the stock worker.js alone does NOT work
+// either: it has relative imports ("./const.js", "./errors.js")
+// that cannot resolve from a blob: URL. So this version fetches
+// the stock worker.js, strips those two import lines, prepends
+// the tiny const/error definitions inline, and blobs the result
+// as a SELF-CONTAINED module worker (same-origin blob: URL).
+// The core is the ESM build (dist/esm), because a module worker
+// cannot importScripts() the UMD core — it dynamic-imports the
+// ESM core instead. No duration cap: LONG videos are allowed in
+// one go. Honest limits that remain: single-thread WASM is SLOW
+// on a phone (a long video takes a long time — keep the page open
+// and on screen, Wi-Fi recommended), and there is NO exec timeout
+// (a 10-min cap would kill long transcodes); the only hard guard
+// is a 200 MB input cap, because input+output live in tab memory
+// and a larger file risks a tab crash. Progress is shown; on any
+// failure the button stays available to retry.
 var hevcConverting=false, hevcFFmpeg=null, hevcFFmpegLoading=null, hevcUtil=null;
 function showHevcConvert(msg){
   $("hevcConvertBtn").style.display="inline-block";
@@ -468,39 +482,65 @@ async function loadHevcWasm(){
     var ff=new ffmpegMod.FFmpeg();
     ff.on("progress", function(p){
       var pct=(p && isFinite(p.progress)) ? Math.round(p.progress*100) : 0;
-      $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ)";
+      $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ — video ရှည်ရင် အချိန်ကြာမယ်)";
     });
     ff.on("log", function(l){ if (l && l.message) log("ffmpeg.wasm: "+l.message); });
-    var coreBase="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd";
+    // Self-contained class worker (see header comment): fetch the
+    // stock ESM worker, strip its two relative imports, inline the
+    // tiny const/error definitions, blob the result. A blob: URL
+    // is same-origin, so Chrome accepts it as a Worker script,
+    // unlike the cross-origin CDN URL the default path builds.
+    var workerText=await (await fetch("https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm/worker.js")).text();
+    workerText=workerText.replace(/import\s*\{[^}]*\}\s*from\s*"\.\/const\.js";?/g, "");
+    workerText=workerText.replace(/import\s*\{[^}]*\}\s*from\s*"\.\/errors\.js";?/g, "");
+    if (/from\s*"\.\//.test(workerText)) throw new Error("worker.js still has a relative import — cannot build a self-contained worker blob.");
+    var workerPrelude="var CORE_URL=\"https://unpkg.com/@ffmpeg/core@0.12.9/dist/umd/ffmpeg-core.js\";\n"
+      + "var FFMessageType={LOAD:\"LOAD\",EXEC:\"EXEC\",FFPROBE:\"FFPROBE\",WRITE_FILE:\"WRITE_FILE\",READ_FILE:\"READ_FILE\",DELETE_FILE:\"DELETE_FILE\",RENAME:\"RENAME\",CREATE_DIR:\"CREATE_DIR\",LIST_DIR:\"LIST_DIR\",DELETE_DIR:\"DELETE_DIR\",ERROR:\"ERROR\",DOWNLOAD:\"DOWNLOAD\",PROGRESS:\"PROGRESS\",LOG:\"LOG\",MOUNT:\"MOUNT\",UNMOUNT:\"UNMOUNT\"};\n"
+      + "var ERROR_UNKNOWN_MESSAGE_TYPE=new Error(\"unknown message type\");\n"
+      + "var ERROR_NOT_LOADED=new Error(\"ffmpeg is not loaded, call `await ffmpeg.load()` first\");\n"
+      + "var ERROR_IMPORT_FAILURE=new Error(\"failed to import ffmpeg-core.js\");\n";
+    var classWorkerURL=URL.createObjectURL(new Blob([workerPrelude+workerText], {type:"text/javascript"}));
+    // ESM core (not UMD): a module worker cannot importScripts()
+    // the UMD core, it dynamic-imports the ESM core instead.
+    var coreBase="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm";
     await ff.load({
+      classWorkerURL: classWorkerURL,
       coreURL: await utilMod.toBlobURL(coreBase+"/ffmpeg-core.js", "text/javascript"),
       wasmURL: await utilMod.toBlobURL(coreBase+"/ffmpeg-core.wasm", "application/wasm")
     });
     hevcFFmpeg=ff;
-    log("ffmpeg.wasm loaded (single-thread @ffmpeg/core 0.12.6, no COOP/COEP needed).");
+    log("ffmpeg.wasm loaded (single-thread @ffmpeg/core 0.12.6 ESM, self-contained blob class worker, no COOP/COEP needed).");
     return ff;
   })();
+  // Do not cache a failed load: a retry must rebuild the worker.
+  hevcFFmpegLoading=hevcFFmpegLoading.catch(function(e){ hevcFFmpegLoading=null; throw e; });
   return hevcFFmpegLoading;
 }
 async function convertHevcToH264(){
   if (hevcConverting) return;
   if (!srcFile){ alert("Video file အရင်ရွေးပါ။"); return; }
-  // Memory guard: input + output + decode buffers live in the tab.
+  // Memory guard only (no duration cap — long videos are allowed):
+  // input + output + decode buffers live in the tab, so a file
+  // over 200 MB risks a tab crash in WASM memory. That is the
+  // only hard size limit; anything smaller runs, however long,
+  // it just takes longer on phone WASM.
   if (srcFile.size > 200*1024*1024){
-    var msg="ဒီ file ကြီးလွန်းတယ် ("+(srcFile.size/1048576).toFixed(0)+" MB) — ဖုန်းထဲမှာ ပြောင်းရင် tab crash ဖြစ်နိုင်တယ်။ Video ကို အတိုဖြတ်ပြီး (≤60s) ပြန်ရွေးပါ, ဒါမှမဟုတ် CapCut နဲ့ export လုပ်ပါ။";
+    var msg="ဒီ file ကြီးလွန်းတယ် ("+(srcFile.size/1048576).toFixed(0)+" MB) — ဖုန်းထဲမှာ WASM နဲ့ ပြောင်းရင် input+output က tab memory ထဲမှာ ရှိနေလို့ tab crash ဖြစ်နိုင်တယ်။ 200MB အောက် file တွေကတော့ အရှည်ဖြစ်ဖြစ် တခါထဲ ပြောင်းလို့ရတယ်, အချိန်ပဲ ကြာမယ်။";
     $("hevcInfo").textContent=msg; log("HEVC convert refused: file too large ("+srcFile.size+" bytes)."); alert(msg); return;
   }
   hevcConverting=true; $("hevcConvertBtn").disabled=true;
-  $("hevcInfo").textContent="ffmpeg.wasm download လုပ်နေတယ်… (ပထမအကြိမ်ပဲ ~30MB, browser cache ထဲမှာ ကျန်မယ်, Wi-Fi ရှိရင် ပိုကောင်း)";
+  $("hevcInfo").textContent="ffmpeg.wasm download လုပ်နေတယ်… (ပထမအကြိမ်ပဲ ~30MB, browser cache ထဲမှာ ကျန်မယ်, Wi-Fi ရှိရင် ပိုကောင်း — video ရှည်ရင် ပြောင်းတာ ကြာမယ်, page ကို ဖွင့်ထားပါ)";
   log("HEVC convert started for "+srcFile.name+" ("+(srcFile.size/1048576).toFixed(1)+" MB).");
   try{
     var ff=await loadHevcWasm();
-    $("hevcInfo").textContent="ပြောင်းနေတယ်… 0% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့)";
+    $("hevcInfo").textContent="ပြောင်းနေတယ်… 0% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့ — video ရှည်ရင် အချိန်ကြာမယ်)";
     var inputData=await hevcUtil.fetchFile(srcFile);
     await ff.writeFile("input.mp4", inputData);
     // Same args proven natively on a generated HEVC sample (see log):
     // H.264 yuv420p, veryfast, crf 23, max width 1280, faststart, AAC.
-    var ret=await ff.exec(["-i","input.mp4","-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf","23","-pix_fmt","yuv420p","-vf","scale='min(1280,iw)':-2","-movflags","+faststart","-c:a","aac","-b:a","128k","-threads","1","output.mp4"], 600000);
+    // Timeout -1 (no cap): a 10-min cap would kill long videos,
+    // and the user wants long videos in one go — slow, not capped.
+    var ret=await ff.exec(["-i","input.mp4","-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf","23","-pix_fmt","yuv420p","-vf","scale='min(1280,iw)':-2","-movflags","+faststart","-c:a","aac","-b:a","128k","-threads","1","output.mp4"], -1);
     if (ret !== 0) throw new Error("ffmpeg exited with code "+ret+" (no output produced).");
     var outData=await ff.readFile("output.mp4");
     var outBlob=new Blob([outData], {type:"video/mp4"});
@@ -511,7 +551,7 @@ async function convertHevcToH264(){
     loadVideoFile(new File([outBlob], outName, {type:"video/mp4"}), true);
   }catch(e){
     log("HEVC convert FAILED: "+(e && e.message ? e.message : e));
-    $("hevcInfo").textContent="ပြောင်းလို့ မရဘူး: "+(e && e.message ? e.message : e)+" — Wi-Fi နဲ့ ပြန်နှိပ်ကြည့်ပါ, ဒါမှမဟုတ် video ကို အတိုဖြတ်ပြီး (≤60s) ပြန်စမ်းပါ။ CapCut export က နောက်ဆုံး fallback ပဲ။";
+    $("hevcInfo").textContent="ပြောင်းလို့ မရဘူး: "+(e && e.message ? e.message : e)+" — Wi-Fi နဲ့ page ကို ဖွင့်ထားပြီး Convert ကို ပြန်နှိပ်ကြည့်ပါ (video ရှည်ရင် အချိန်ကြာတာက ပုံမှန်ပါ, ချက်ချင်း မရဘူး)။ ဒီ error စာသားအတိုင်း ပြန်ပြောပေးရင် ဆက်ပြင်ပေးလို့ရတယ်။";
     $("hevcConvertBtn").disabled=false;
   }finally{
     hevcConverting=false;
@@ -531,14 +571,14 @@ function loadVideoFile(file, alreadyConverted){
     } else {
       $("srcInfo").textContent="Video load မအောင်ဘူး — Chrome က ဒီ file ရဲ့ codec ကို ဖွင့်လို့မရဘူး (HEVC/H.265 ဖြစ်ဖို့ များတယ်, Gallery မှာ ရပေမယ့် Chrome Android က HEVC ကို လက်မခံဘူး)။ အောက်က 🔄 Convert button ကို နှိပ်ပါ — tool က ဖုန်းထဲမှာပဲ H.264 ပြောင်းပေးမယ်, CapCut မလိုဘူး, file အပြင်ကို မထွက်ဘူး။";
       log("ERROR: video element failed to load this file (no supported sources). Likely HEVC/H.265: plays in Gallery but Chrome Android does not decode HEVC. In-tool convert offered (no CapCut needed).");
-      showHevcConvert("HEVC ဖြစ်နိုင်တယ် — 🔄 Convert button နှိပ်ရင် ဖုန်းထဲမှာပဲ H.264 ပြောင်းပေးမယ် (ပထမအကြိမ် ffmpeg.wasm ~30MB download လိုတယ်, short clip ≤60s အတွက် ဒီဇိုင်းထုတ်ထားတယ်)။");
+      showHevcConvert("HEVC ဖြစ်နိုင်တယ် — 🔄 Convert button နှိပ်ရင် ဖုန်းထဲမှာပဲ H.264 ပြောင်းပေးမယ် (ပထမအကြိမ် ffmpeg.wasm ~30MB download လိုတယ်, Wi-Fi ရှိရင် ပိုကောင်း)။ Video အရှည်ဖြစ်ဖြစ် တခါထဲ ပြောင်းလို့ရတယ်, ရှည်ရင် အချိန်ကြာမယ် — page ကို ဖွင့်ထားပါ။");
     }
   };
   v.src=URL.createObjectURL(srcFile);
   v.onloadedmetadata=function(){
     hideHevcConvert();
     srcDuration=v.duration; srcW=v.videoWidth; srcH=v.videoHeight;
-    $("srcInfo").textContent="File: "+srcFile.name+" — "+srcW+"×"+srcH+", "+srcDuration.toFixed(1)+"s. Tip: trim to ≤30s in your editor first for the first test, or seek and render a short clip.";
+    $("srcInfo").textContent="File: "+srcFile.name+" — "+srcW+"×"+srcH+", "+srcDuration.toFixed(1)+"s. Long or short, it renders in one go — Preview above shows the first frame.";
     log("Loaded: "+srcW+"×"+srcH+", duration "+srcDuration.toFixed(2)+"s");
     if (!segments.length){ segments=[{text:$("scriptText").value.trim() || "ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်"}]; }
     computeTimedSegments(srcDuration); renderSegmentsText();
