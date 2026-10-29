@@ -41,7 +41,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v9-sliders, 2026-10-29.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v10-second-load, 2026-10-29.</b> Static, phone-only — no server, no upload.</p>
 <p class="small"><b>1</b> file → <b>2</b> script → <b>3</b> Gemini (optional) → <b>4</b> audio → <b>5</b> Preview → <b>6</b> render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server), and does NOT call any VM. <b>Input is a local video file from this phone.</b> Script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only. MP4, MOV and MKV are accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see section 1.</p>
@@ -299,7 +299,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v9-sliders, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v10-second-load, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -698,6 +698,33 @@ function loadVideoFile(file, alreadyConverted){
   // pickers may report nothing at all — attempt the load anyway
   // and let the <video> error handler (below) offer Convert.
   if (!srcFile.type || srcFile.type.indexOf("video/") !== 0){ log("NOTE: chosen file type is '"+(srcFile.type||"unknown")+"' — attempting to load anyway (MP4/MOV/MKV are all accepted; a non-video type only matters if <video> fails, which shows Convert)."); }
+  // v10 second-load fix: the v6 removeAttribute("src")+load() reset
+  // did NOT cure this case — the saved converted file plays in
+  // Gallery (output valid), yet the SAME <video> element that
+  // already failed on the original file still errors on the
+  // converted blob. So for a converted load, discard that element
+  // entirely and use a brand-new one. This is safe: every other
+  // srcVideo use in this file queries $("srcVideo") by id at use
+  // time (redrawPreview, render handler), no code holds a stored
+  // reference to the old element, and no listener is attached
+  // directly to srcVideo (listeners live on previewCanvas, buttons
+  // and inputs). The replacement keeps id/controls/playsinline/
+  // muted and sits in the exact same DOM position.
+  if (alreadyConverted){
+    try{
+      var oldV=$("srcVideo");
+      if (oldV && oldV.parentNode){
+        var oldSrc=""; try{ oldSrc=oldV.src||""; }catch(e){}
+        try{ oldV.pause(); }catch(e){}
+        var newV=document.createElement("video");
+        newV.id="srcVideo"; newV.controls=true; newV.playsInline=true;
+        newV.setAttribute("playsinline",""); newV.muted=true;
+        oldV.parentNode.replaceChild(newV, oldV);
+        if (oldSrc && oldSrc.indexOf("blob:")===0){ try{ URL.revokeObjectURL(oldSrc); }catch(e){} }
+        log("Converted load: replaced <video> element with a fresh one (prior failed-load error state cannot survive a new element).");
+      }
+    }catch(e){ log("WARNING: could not replace <video> element, falling back to the existing one: "+e.message); }
+  }
   var v=$("srcVideo");
   // v6 fix — handlers BEFORE src, plus an explicit reset: reusing
   // one <video> element after a failed load can leave it in an
@@ -721,7 +748,7 @@ function loadVideoFile(file, alreadyConverted){
       // Gallery distinguishes "output is corrupt" from "<video>
       // refuses this blob". Report size + ret + error code.
       var dg=window.__convertedDiag||{};
-      var diagText="Converted H.264 file load မရဘူး — ဒါပေမယ့် converted output ကို အရင် စစ်ပြီးပြီ (size="+(dg.size||"?")+" bytes, ffmpeg ret="+(dg.ret!==undefined?dg.ret:"?")+", video error code="+errCode+(errMsg?" ("+errMsg+")":"")+")။ ဒါက output ပျက်တာ ဖြစ်နိုင်သလို, <video> က ဒီ blob ကို လက်မခံတာလည်း ဖြစ်နိုင်တယ်။ အပေါ်က ⬇️ Save link နဲ့ converted file ကို သိမ်းပြီး Gallery မှာ ဖွင့်ကြည့်ပါ — Gallery မှာ ရရင် output မှန်တယ်, <video> load ပဲ ပြဿနာပါ။ ဒီ diagnostic စာသား (size / ret / error code) အတိုင်း ပြန်ပြောပေးပါ, တခြား video စမ်းစရာ မလိုဘူး။";
+      var diagText="Converted H.264 file load မရဘူး — ဒါပေမယ့် converted output ကို အရင် စစ်ပြီးပြီ (size="+(dg.size||"?")+" bytes, ffmpeg ret="+(dg.ret!==undefined?dg.ret:"?")+", video error code="+errCode+(errMsg?" ("+errMsg+")":"")+")။ Gallery plays this file, so the output is valid — please refresh the page and choose the saved -h264.mp4 file directly (fresh first load, no Convert needed). Gallery မှာ ရရင် output မှန်တယ်, ဒီ page session ထဲမှာ <video> က ဒုတိယအကြိမ် load ကို လက်မခံတာပဲ ပြဿနာပါ။ အပေါ်က ⬇️ Save link နဲ့ converted file ကို သိမ်းပြီး, page ကို refresh လုပ်ပြီး အဲဒီ saved -h264.mp4 file ကိုပဲ တိုက်ရိုက်ရွေးပါ (fresh first load, Convert ပြန်နှိပ်စရာ မလိုဘူး)။ ဒီ diagnostic စာသား (size / ret / error code) အတိုင်း ပြန်ပြောပေးပါ, တခြား video စမ်းစရာ မလိုဘူး။";
       $("srcInfo").textContent=diagText;
       log("ERROR: converted H.264 file failed to load in <video> (size="+(dg.size||"?")+", ffmpeg ret="+(dg.ret!==undefined?dg.ret:"?")+", video error code="+errCode+"). Output was validated as non-empty MP4 with ftyp before load, so this is a <video>/blob issue or a Chrome codec rejection, not a proven corrupt output. Save link kept visible for a Gallery test.");
       // Deliberately do NOT hideHevcConvert() here: the user must
