@@ -41,7 +41,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v11-auto-convert, 2026-10-29.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v12-smaller-convert, 2026-10-29.</b> Static, phone-only — no server, no upload.</p>
 <p class="small"><b>1</b> file → <b>2</b> script → <b>3</b> Gemini (optional) → <b>4</b> audio → <b>5</b> Preview → <b>6</b> render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server), and does NOT call any VM. <b>Input is a local video file from this phone.</b> Script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only. MP4, MOV and MKV are accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see section 1.</p>
@@ -299,7 +299,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v11-auto-convert, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in section 1 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v12-smaller-convert, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in section 1 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -564,7 +564,7 @@ async function loadHevcWasm(){
     var ff=new ffmpegMod.FFmpeg();
     ff.on("progress", function(p){
       var pct=(p && isFinite(p.progress)) ? Math.round(p.progress*100) : 0;
-      $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ — ultrafast + 720p နဲ့ ပိုမြန်ပေမယ့် video ရှည်ရင် အချိန်ကြာသေးတယ်)";
+      $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ — ultrafast + 480p သေးတဲ့ file နဲ့ ပိုမြန်အောင် ပြောင်းနေတယ်, ဒီ converted file ကနေ render လုပ်ရင် 480p ထွက်မယ်, 720p မဟုတ်ဘူး)";
     });
     ff.on("log", function(l){ if (l && l.message) log("ffmpeg.wasm: "+l.message); });
     // Self-contained class worker (see header comment): fetch the
@@ -615,7 +615,7 @@ async function convertHevcToH264(autoMode){
   log("Convert started for "+srcFile.name+" ("+(srcFile.size/1048576).toFixed(1)+" MB, type="+(srcFile.type||"unknown")+") — MP4/MOV/MKV all go through this same path.");
   try{
     var ff=await loadHevcWasm();
-    $("hevcInfo").textContent="ပြောင်းနေတယ်… 0% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့ — အခု ultrafast + 720p နဲ့ ပိုမြန်ပေမယ့် video ရှည်ရင် အချိန်ကြာသေးတယ်, instant မဟုတ်ဘူး)";
+    $("hevcInfo").textContent="ပြောင်းနေတယ်… 0% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့ — အခု ultrafast + 480p သေးတဲ့ file နဲ့ ကြီး/ရှည်တဲ့ video တွေ ပိုမြန်အောင် ပြောင်းနေတယ်, ဒီ converted file ကနေ render လုပ်ရင် 480p ထွက်မယ်, 720p မဟုတ်ဘူး, instant မဟုတ်ဘူး)";
     var inputData=await hevcUtil.fetchFile(srcFile);
     // Keep the real extension (mov/mkv/mp4/m4v/webm) in the WASM
     // filename so ffmpeg probes the right container — forcing
@@ -626,15 +626,18 @@ async function convertHevcToH264(autoMode){
     var inName="input."+inExt;
     await ff.writeFile(inName, inputData);
     // Same args proven natively on generated HEVC, MOV and MKV
-    // samples: H.264 yuv420p, ultrafast, crf 23, max width 720,
-    // faststart, AAC. The final render target is already long
-    // side <=720, so a 720-capped convert intermediate costs no
-    // final quality. -map 0:v:0 + 0:a? keeps only the first
-    // video stream and any audio (subtitle/other streams in an
-    // MKV are ignored, not burned or copied). Timeout -1 (no
-    // cap): a 10-min cap would kill long videos, and the user
-    // wants long videos in one go — slow, not capped.
-    var ret=await ff.exec(["-i",inName,"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","23","-pix_fmt","yuv420p","-vf","scale='min(720,iw)':-2","-movflags","+faststart","-c:a","aac","-b:a","128k","-threads","1","output.mp4"], -1);
+    // samples, now smaller for large/long files (v12): H.264
+    // yuv420p, ultrafast, crf 28, max width 480, faststart,
+    // AAC 96k. A 480p intermediate is much smaller and faster to
+    // encode and to load in Chrome <video> than 720p, which is
+    // what large/long files need — but honestly, the final render
+    // from this converted file will be 480p, not 720p. -map 0:v:0
+    // + 0:a? keeps only the first video stream and any audio
+    // (subtitle/other streams in an MKV are ignored, not burned
+    // or copied). Timeout -1 (no cap): a 10-min cap would kill
+    // long videos, and the user wants long videos in one go —
+    // slow, not capped.
+    var ret=await ff.exec(["-i",inName,"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","28","-pix_fmt","yuv420p","-vf","scale='min(480,iw)':-2","-movflags","+faststart","-c:a","aac","-b:a","96k","-threads","1","output.mp4"], -1);
     if (ret !== 0) throw new Error("ffmpeg exited with code "+ret+" (no output produced).");
     var outDataRaw=await ff.readFile("output.mp4");
     // Converted-output validation (v6 fix): never feed an empty or
