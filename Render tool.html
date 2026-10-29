@@ -25,7 +25,7 @@
   input[type=file]{padding:12px}
   button{min-height:48px;padding:13px 18px;margin:6px 6px 6px 0;font-size:16px;font-weight:700;border-radius:12px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.08);color:#ffffff;cursor:pointer}
   button:disabled{opacity:0.45;cursor:default}
-  #renderBtn,#hevcConvertBtn,#autoSplitBtn{display:block !important;width:100% !important;margin:10px 0;background:#00E5FF;border-color:#00E5FF;color:#03050a}
+  #renderBtn,#hevcConvertBtn,#autoSplitBtn,#startProcessingBtn{display:block !important;width:100% !important;margin:10px 0;background:#00E5FF;border-color:#00E5FF;color:#03050a}
   #cancelBtn,#delKeyBtn{border-color:rgba(238,69,64,0.65);color:#ff8a86;background:rgba(238,69,64,0.10)}
   #log{white-space:pre-wrap;background:#0a0f1a;color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);padding:12px;border-radius:12px;font-size:13px;max-height:300px;overflow:auto}
   #progress{font-size:18px;font-weight:800;color:#00E5FF}
@@ -41,10 +41,10 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v12-smaller-convert, 2026-10-29.</b> Static, phone-only — no server, no upload.</p>
-<p class="small"><b>1</b> file → <b>2</b> script → <b>3</b> Gemini (optional) → <b>4</b> audio → <b>5</b> Preview → <b>6</b> render → download MP4.</p>
+<p class="small"><b>Version: blogspot-v13-one-tap, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>1</b> Gemini key → <b>2</b> video → <b>3</b> font / colour / blur → <b>4</b> Start Processing (one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4).</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
-<p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server), and does NOT call any VM. <b>Input is a local video file from this phone.</b> Script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only. MP4, MOV and MKV are accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see section 1.</p>
+<p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server) and does NOT call any VM. <b>Input is a local video file from this phone.</b> The new main flow is one tap: Start Processing auto-transcribes the video audio with YOUR OWN Gemini key (no Whisper runs in this browser — transcription is a Gemini audio call from this browser to Google, using only your key), turns it into a natural Burmese script, generates Gemini narration voice, then renders on this phone CPU only. Without a key, Start Processing cannot do the auto script/voice — use the Manual / advanced path below instead (paste a script, upload audio, old Start render). MP4, MOV and MKV are accepted; any file Chrome cannot play is auto-converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see step 2.</p>
 </details>
 <p id="audioModeNote" class="small"></p>
 
@@ -54,18 +54,17 @@
 <p class="small">Battery / heat: hardware encoding will warm the phone. This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee the browser keeps rendering if you leave the page.</p>
 </details>
 </div>
-
-<div class="box preview-box">
-<h2>Preview — အပေါ်ဆုံး (ချိန်တိုင်း ဒီမှာ ချက်ချင်း မြင်ရမယ်)</h2>
-<canvas id="previewCanvas"></canvas>
-<p class="hint">Blur box / စာတန်းကို လက်နဲ့ ဆွဲ၍ ရွှေ့နိုင်တယ်။ Red outline က guide ပဲ, render မှာ မပါဘူး။</p>
-<details><summary>ℹ️ Details</summary>
-<p class="small">Blur box ထဲကို ထိပြီး ဆွဲပါ (position), အောက်ညာထောင့်ကို ဆွဲရင် size။ စာတန်းပေါ်ကို ထိပြီး ဆွဲရင် position ပြောင်းမယ် (auto Custom, subY % ပြောင်းမယ်)။ Font ကို အောက်က slider နဲ့ ချိန်ပါ, preview မှာ ချက်ချင်း ပေါ်မယ်။ Setting ပြောင်းတိုင်း preview ဒီအပေါ်မှာ ချက်ချင်း ပြောင်းတယ်။ Preview shows the first frame only — it does not prove the full render.</p>
-</details>
-</div>
-
 <div class="box">
-<h2>1. Source video (LOCAL FILE ONLY — link input does NOT work on Blogspot)</h2>
+<h2>1. Gemini API key — FIRST (your own key only)</h2>
+<p class="small">Enter your OWN free AI Studio key here once. It is stored ONLY in this phone browser's localStorage, sent ONLY directly from this browser to Google's Gemini API, never to the assistant, never to any VM. Delete it any time with the button below. Without a key, Start Processing cannot do auto script/voice — use the Manual / advanced path at the bottom instead.</p>
+<label>Gemini API key (password field)
+<input type="password" id="geminiKey" placeholder="Paste your own AI Studio key here"></label>
+<button id="saveKeyBtn">💾 Save key on this phone only</button>
+<button id="delKeyBtn">🗑️ Delete key from this phone</button>
+<p id="keyInfo" class="small">No key saved.</p>
+</div>
+<div class="box">
+<h2>2. Video upload — MP4, MOV or MKV (local file only, no link)</h2>
 
 <label>Choose video file — MP4, MOV or MKV
 <input type="file" id="fileInput" accept="video/*,.mp4,.mov,.mkv,.m4v,.webm"></label>
@@ -79,59 +78,17 @@
 <p><a id="convertedDownloadLink" style="display:none"></a></p>
 <p id="convertedSaveInfo" class="small" style="display:none">Converted once — save this file, and next time choose the saved H.264 file directly, no Convert needed. တခါပြောင်းပြီးရင် ဒီ file ကို သိမ်းထားပါ — နောက်တခါ ဒီ saved H.264 file ကိုပဲ တိုက်ရိုက်ရွေးပါ, Convert ပြန်နှိပ်စရာ မလိုဘူး။ H.264 MP4 files never need Convert at all; Convert is only for HEVC/MOV/MKV files Chrome cannot play.</p>
 </div>
-
-<div class="box">
-<h2>2. Narration script (Burmese, Unicode — you review/edit before render)</h2>
-<label>Narration script — type or paste the full Burmese narration here (Unicode, never Zawgyi)
-<textarea id="scriptText" rows="6">ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်</textarea></label>
-<label>Chars per cue line <span id="capCharsVal" class="slider-val">40</span>
-<input type="range" id="capChars" value="40" min="20" max="80" step="5"></label>
-<label>Words per cue line <span id="capWordsVal" class="slider-val">4</span>
-<input type="range" id="capWords" value="4" min="3" max="12" step="1"></label>
-<details><summary>ℹ️ Details — splitting rule</summary>
-<p class="small">Split by sentence/phrase first (။ ? !), then by words — whichever fills first cuts the cue: 40 chars OR 4 words. Chars is the main control, Words is secondary.</p>
-</details>
-<button id="autoSplitBtn">✂️ Auto-split into timed segments</button>
-<p id="segInfo" class="small">No segments yet — press Auto-split after choosing a video (times are distributed over the video duration, proportional to character count).</p>
-<label>Segments (one per line, editable — format: start-end | text). Edit, then press Apply.
-<textarea id="segmentsText" rows="6" placeholder="0.0-4.5 | ကျွန်တော်တို့ အပေါ်ထပ်က"></textarea></label>
-<button id="applySegBtn">✅ Apply segment edits</button>
-<details><summary>ℹ️ Details — timing</summary>
-<p class="small"><b>Timing is approximate:</b> segment times are proportional to character count over the video duration. If narration is longer than the video, the video plays slower (clamped 0.5–2.5×) so it fits. Subtitles show one cue line at a time, never a whole paragraph.</p>
-</details>
-</div>
-
-<div class="box">
-<details>
-<summary><b>3. Optional Gemini (your OWN key only — collapsed, optional)</b></summary>
-<p class="small">No key is built into this page. If you use Gemini, type YOUR OWN free AI Studio key below. It is stored ONLY in this phone browser's localStorage, sent ONLY directly from this browser to Google's Gemini API, never to the assistant, never to any VM. Delete it any time with the button below. Without a key, skip this whole section — sections 1, 2, 4, 5, 6 work without Gemini.</p>
-<label>Gemini API key (password field)
-<input type="password" id="geminiKey" placeholder="Paste your own AI Studio key here"></label>
-<button id="saveKeyBtn">💾 Save key on this phone only</button>
-<button id="delKeyBtn">🗑️ Delete key from this phone</button>
-<p id="keyInfo" class="small">No key saved.</p>
-<label>Transcript to turn into a Burmese script (paste source transcript / notes here)
-<textarea id="transcriptText" rows="4" placeholder="Paste the video transcript or notes here…"></textarea></label>
-<button id="geminiScriptBtn">✍️ Generate Burmese script from transcript (Gemini)</button>
-<p class="small">Result goes into section 2's script editor for YOUR review/edit before render (human-in-the-loop, same rule as the bot). Nothing is rendered automatically from Gemini output.</p>
-<button id="geminiTtsBtn">🎙️ Gemini TTS narration from section 2 script</button>
-<p id="ttsInfo" class="small">No Gemini TTS audio yet. TTS calls the model once per ~600-char chunk (sentence boundaries), joins the PCM into one WAV in this browser (24 kHz mono). On ANY failure it falls back to original-audio mode and logs the error — it never uses a shared pool key and never fakes audio.</p>
-</details>
-</div>
-
-<div class="box">
-<h2>4. Narration audio for render</h2>
-<audio id="narrAudio" preload="auto"></audio>
-<label>Upload narration audio (optional — e.g. a voice recording made on this phone)
-<input type="file" id="audioFile" accept="audio/*"></label>
-<p id="narrInfo" class="small">No narration audio selected. Audio mode in section 5 decides what is used: Gemini TTS / uploaded audio / original video audio / silent.</p>
+<div class="box preview-box">
+<h2>Preview — အပေါ်ဆုံး (ချိန်တိုင်း ဒီမှာ ချက်ချင်း မြင်ရမယ်)</h2>
+<canvas id="previewCanvas"></canvas>
+<p class="hint">Blur box / စာတန်းကို လက်နဲ့ ဆွဲ၍ ရွှေ့နိုင်တယ်။ Red outline က guide ပဲ, render မှာ မပါဘူး။</p>
 <details><summary>ℹ️ Details</summary>
-<p class="small">One MediaElementSource per audio element per page load — if you already rendered with narration/uploaded audio once, reload the page before rendering with a different narration audio.</p>
+<p class="small">Blur box ထဲကို ထိပြီး ဆွဲပါ (position), အောက်ညာထောင့်ကို ဆွဲရင် size။ စာတန်းပေါ်ကို ထိပြီး ဆွဲရင် position ပြောင်းမယ် (auto Custom, subY % ပြောင်းမယ်)။ Font ကို အောက်က slider နဲ့ ချိန်ပါ, preview မှာ ချက်ချင်း ပေါ်မယ်။ Setting ပြောင်းတိုင်း preview ဒီအပေါ်မှာ ချက်ချင်း ပြောင်းတယ်။ Preview shows the first frame only — it does not prove the full render.</p>
 </details>
 </div>
-
 <div class="box">
-<h2>5. Settings</h2>
+<h2>3. Settings — font, colour, blur</h2>
+<p class="small">Main controls here: font size, subtitle colour, original-text blur on/off, blur thickness. The other sliders (blur position/size, outline, subtitle position/width, ratio, speed) are in the same step below — adjust them, check the Preview above, then tap Start Processing.</p>
 <label>Output ratio
 <select id="ratio"><option value="Original">Original (source ratio, long side ≤720)</option><option value="9:16">9:16 (720×1280, cover crop)</option></select></label>
 <label>Video speed
@@ -174,9 +131,56 @@
 <label>Caption width % <span id="capWVal" class="slider-val">88</span>
 <input type="range" id="capW" value="88" min="50" max="100" step="1"></label>
 </div>
-
 <div class="box">
-<h2>6. Render</h2>
+<h2>4. Start Processing — ONE TAP</h2>
+<p class="small">Tap once and the tool does the rest by itself, in order: (1) transcribe the video audio, (2) make a natural Burmese recap script, (3) generate Gemini narration voice, (4) render on this phone CPU only → download MP4. No manual script paste, no Auto-split tap, no TTS tap, no Start render tap needed in this main path. Keep this page open and on screen until the download link appears.</p>
+<button id="startProcessingBtn">▶ Start Processing — auto transcript → script → voice → render</button>
+<p id="autoProgress">Not started — enter your key (step 1), choose a video (step 2), adjust font/colour/blur (step 3), then tap Start Processing.</p>
+<p id="autoSummary" class="small"></p>
+</div>
+<details id="manualDetails">
+<summary><b>Manual / advanced (optional — collapsed)</b> — paste your own script, upload your own narration, or use the old step-by-step render. The main flow above does not need this.</summary>
+<div class="box">
+<h2>Manual: Narration script (Burmese, Unicode — you review/edit before render)</h2>
+<label>Narration script — type or paste the full Burmese narration here (Unicode, never Zawgyi)
+<textarea id="scriptText" rows="6">ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်</textarea></label>
+<label>Chars per cue line <span id="capCharsVal" class="slider-val">40</span>
+<input type="range" id="capChars" value="40" min="20" max="80" step="5"></label>
+<label>Words per cue line <span id="capWordsVal" class="slider-val">4</span>
+<input type="range" id="capWords" value="4" min="3" max="12" step="1"></label>
+<details><summary>ℹ️ Details — splitting rule</summary>
+<p class="small">Split by sentence/phrase first (။ ? !), then by words — whichever fills first cuts the cue: 40 chars OR 4 words. Chars is the main control, Words is secondary.</p>
+</details>
+<button id="autoSplitBtn">✂️ Auto-split into timed segments</button>
+<p id="segInfo" class="small">No segments yet — press Auto-split after choosing a video (times are distributed over the video duration, proportional to character count).</p>
+<label>Segments (one per line, editable — format: start-end | text). Edit, then press Apply.
+<textarea id="segmentsText" rows="6" placeholder="0.0-4.5 | ကျွန်တော်တို့ အပေါ်ထပ်က"></textarea></label>
+<button id="applySegBtn">✅ Apply segment edits</button>
+<details><summary>ℹ️ Details — timing</summary>
+<p class="small"><b>Timing is approximate:</b> segment times are proportional to character count over the video duration. If narration is longer than the video, the video plays slower (clamped 0.5–2.5×) so it fits. Subtitles show one cue line at a time, never a whole paragraph.</p>
+</details>
+</div>
+<div class="box">
+<h2>Manual: Narration audio for render</h2>
+<audio id="narrAudio" preload="auto"></audio>
+<label>Upload narration audio (optional — e.g. a voice recording made on this phone)
+<input type="file" id="audioFile" accept="audio/*"></label>
+<p id="narrInfo" class="small">No narration audio selected. Audio mode in section 5 decides what is used: Gemini TTS / uploaded audio / original video audio / silent.</p>
+<details><summary>ℹ️ Details</summary>
+<p class="small">One MediaElementSource per audio element per page load — if you already rendered with narration/uploaded audio once, reload the page before rendering with a different narration audio.</p>
+</details>
+</div>
+<div class="box">
+<h3>Manual: Gemini script / TTS (your key, step 1)</h3>
+<label>Transcript to turn into a Burmese script (paste source transcript / notes here)
+<textarea id="transcriptText" rows="4" placeholder="Paste the video transcript or notes here…"></textarea></label>
+<button id="geminiScriptBtn">✍️ Generate Burmese script from transcript (Gemini)</button>
+<p class="small">Result goes into section 2's script editor for YOUR review/edit before render (human-in-the-loop, same rule as the bot). Nothing is rendered automatically from Gemini output.</p>
+<button id="geminiTtsBtn">🎙️ Gemini TTS narration from section 2 script</button>
+<p id="ttsInfo" class="small">No Gemini TTS audio yet. TTS calls the model once per ~600-char chunk (sentence boundaries), joins the PCM into one WAV in this browser (24 kHz mono). On ANY failure it falls back to original-audio mode and logs the error — it never uses a shared pool key and never fakes audio.</p>
+</div>
+<div class="box">
+<h2>Manual: Render (old Start render — only for the manual path)</h2>
 <button id="renderBtn">▶ Start render</button>
 <button id="cancelBtn" disabled>Cancel</button>
 <p id="progress">Not started.</p>
@@ -186,6 +190,7 @@
 <p class="small">Encoder path is shown in the log below. If WebCodecs is unavailable, the fallback is MediaRecorder. The download extension matches the actual container: .mp4 only if actually MP4, otherwise .webm (or .h264 if muxing fails).</p>
 </details>
 </div>
+</details>
 
 <h2>Log</h2>
 <pre id="log"></pre>
@@ -299,7 +304,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v12-smaller-convert, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in section 1 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v13-one-tap, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -1025,6 +1030,161 @@ $("audioFile").addEventListener("change", function(){
   var na=$("narrAudio"); na.src=url; narrSrcKind="uploaded";
   na.onloadedmetadata=function(){ narrDur=na.duration; $("narrInfo").textContent="Uploaded narration: "+f.name+" — "+narrDur.toFixed(1)+"s. Set Audio mode to Uploaded audio, then Start render."; log("Uploaded narration loaded: "+narrDur.toFixed(1)+"s."); };
   $("audioMode").value="uploaded"; updateAudioNote();
+});
+
+
+// ---------- v13 ONE-TAP AUTO CHAIN (Start Processing) ----------
+// One tap, in order: (1) Gemini audio transcription of the loaded
+// video's audio, (2) Gemini Burmese script from that transcript,
+// (3) Gemini TTS narration, (4) the existing phone-CPU render
+// (renderBtn handler). No Whisper runs in this browser — step (1)
+// is a Gemini audio-understanding call made directly from this
+// browser to Google with ONLY the user's own key (step 1), using
+// audio extracted in-browser with the already-used ffmpeg.wasm
+// (AAC 32k mono 16kHz, so a long video stays under the Gemini
+// inline-data size limit). If transcription truly cannot run,
+// the chain STOPS honestly and opens the Manual path — it never
+// fakes a transcript, never invents a script, and never renders
+// a silent video as if it were narrated. If the user already
+// pasted a real script into the manual script box (not the
+// default placeholder), a re-tap of Start Processing uses that
+// script and skips transcription/script generation.
+function bytesToBase64(bytes){
+  var out="", CH=0x8000;
+  for (var i=0;i<bytes.length;i+=CH){
+    var chunk=bytes.subarray(i, i+CH);
+    var s=""; for (var j=0;j<chunk.length;j++) s+=String.fromCharCode(chunk[j]);
+    out+=btoa(s);
+  }
+  return out;
+}
+function autoSetProgress(msg){
+  var el=$("autoProgress"); if (el) el.textContent=msg;
+  var p=$("progress"); if (p) p.textContent=msg;
+  log("AUTO: "+msg);
+}
+async function autoTranscribeWithGemini(){
+  // Extract audio in-browser with ffmpeg.wasm (already used for
+  // Convert; no new CDN, no server). AAC is built into the core;
+  // MP3 encoding is not relied on.
+  var ff=await loadHevcWasm();
+  var extMatch=(srcFile.name||"video.mp4").match(/\.([A-Za-z0-9]+)$/);
+  var inExt=extMatch ? extMatch[1].toLowerCase() : "mp4";
+  if (["mp4","mov","mkv","m4v","webm"].indexOf(inExt) < 0) inExt="mp4";
+  var inName="auto_in."+inExt;
+  var inputData=await hevcUtil.fetchFile(srcFile);
+  await ff.writeFile(inName, inputData);
+  var ret=await ff.exec(["-i",inName,"-vn","-c:a","aac","-b:a","32k","-ar","16000","-ac","1","auto_audio.m4a"], -1);
+  if (ret !== 0) throw new Error("audio extraction failed (ffmpeg ret="+ret+")");
+  var audioData=await ff.readFile("auto_audio.m4a");
+  try{ await ff.deleteFile(inName); await ff.deleteFile("auto_audio.m4a"); }catch(e){}
+  var audioBytes=audioData.slice ? audioData.slice() : audioData;
+  if (!audioBytes || !audioBytes.length) throw new Error("extracted audio is empty (0 bytes)");
+  if (audioBytes.length > 18*1024*1024) throw new Error("extracted audio is too large for in-browser Gemini transcription ("+(audioBytes.length/1048576).toFixed(1)+" MB) — paste a script in the Manual path instead");
+  var b64=bytesToBase64(audioBytes);
+  // Gemini audio understanding: gemini-2.5-flash accepts audio
+  // inlineData. Prompt asks for a faithful transcript only.
+  var j=await geminiGenerate("gemini-2.5-flash", {contents:[{parts:[
+    {text:"Transcribe the spoken audio in this file faithfully, in the language(s) spoken, as plain text only. Do not summarise, do not translate, do not add narration or commentary — transcription only."},
+    {inlineData:{mimeType:"audio/aac", data:b64}}
+  ]}]});
+  var out=geminiTextOf(j);
+  if (!out) throw new Error("Gemini returned no transcript (empty candidates)");
+  return out;
+}
+async function autoGenerateTts(script){
+  // Same chunking + Kore voice as the manual Gemini TTS button,
+  // factored so Start Processing can call it directly.
+  var sentences=script.split(/(?<=[။?!])\s+/).filter(function(s){ return s.trim(); });
+  if (!sentences.length) sentences=[script];
+  var chunks=[], cur="";
+  sentences.forEach(function(s){
+    if (cur && (cur.length+s.length+1 > 600)){ chunks.push(cur); cur=s; } else cur=cur?cur+" "+s:s;
+  });
+  if (cur) chunks.push(cur);
+  var allPcm=[];
+  for (var ci=0;ci<chunks.length;ci++){
+    log("AUTO TTS chunk "+(ci+1)+"/"+chunks.length+" ("+chunks[ci].length+" chars)...");
+    var j=await geminiGenerate("gemini-2.5-flash-preview-tts", {contents:[{parts:[{text:chunks[ci]}]}],
+      generationConfig:{responseModalities:["AUDIO"], speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:"Kore"}}}}});
+    var part=null; try{ part=j.candidates[0].content.parts[0]; }catch(e){}
+    if (!part || !part.inlineData || !part.inlineData.data) throw new Error("TTS chunk "+(ci+1)+" returned no audio");
+    var mime=(part.inlineData.mimeType||"").toLowerCase();
+    var bytes=b64ToBytes(part.inlineData.data);
+    if (mime.indexOf("wav")>=0){ allPcm.push(bytes.slice(44)); } else { allPcm.push(bytes); }
+  }
+  var total=0; allPcm.forEach(function(b){ total+=b.length; });
+  var joined=new Uint8Array(total), off=0; allPcm.forEach(function(b){ joined.set(b,off); off+=b.length; });
+  var wav=pcmToWav(joined, 24000);
+  var blob=new Blob([wav], {type:"audio/wav"});
+  var url=URL.createObjectURL(blob);
+  var na=$("narrAudio"); na.src=url; narrSrcKind="gemini";
+  await new Promise(function(resolve){
+    var done=false;
+    var finish=function(){ if(!done){ done=true; resolve(); } };
+    na.onloadedmetadata=function(){ narrDur=na.duration; finish(); };
+    setTimeout(finish, 5000);
+  });
+  $("ttsInfo").textContent="Gemini TTS ready (auto): "+(narrDur?narrDur.toFixed(1):"?")+"s, "+chunks.length+" chunk(s), voice Kore.";
+  $("audioMode").value="gemini"; updateAudioNote();
+  log("AUTO TTS ready: "+chunks.length+" chunk(s).");
+  return true;
+}
+$("startProcessingBtn").addEventListener("click", async function(){
+  if (running){ autoSetProgress("Render already running — please wait for it to finish."); return; }
+  if (hevcConverting){ autoSetProgress("Convert still running — please wait for it to finish, then tap Start Processing again."); return; }
+  if (!srcFile){ alert("Video file မရွေးရသေးဘူး — အဆင့် 2 မှာ video တပုဒ် အရင်ရွေးပါ, Preview မှာ ပထမ frame ပေါ်လာတဲ့အထိ စောင့်ပါ။"); autoSetProgress("No video yet — choose a video in step 2 first."); return; }
+  if (!srcW || !srcH || !isFinite(srcDuration) || srcDuration <= 0){ alert("Video load မအောင်သေးဘူး — Preview မှာ frame ပေါ်လာတဲ့အထိ စောင့်ပါ။"); autoSetProgress("Video not loaded yet — wait for the Preview frame, then tap Start Processing again."); return; }
+  var key=geminiKey();
+  if (!key){
+    autoSetProgress("Gemini key လိုတယ် — အဆင့် 1 မှာ ကိုယ့် AI Studio key အရင်ထည့်ပြီး Save လုပ်ပါ, ပြီးမှ Start Processing ပြန်နှိပ်ပါ။ Key မရှိရင် Manual / advanced path ကို သုံးပါ (script paste လုပ်, audio upload လုပ်, old Start render နှိပ်) — key မရှိဘဲ အသံမပါတဲ့ video ကို narrated video လို့ မထုတ်ပေးဘူး။");
+    alert("Gemini key လိုတယ် — အဆင့် 1 မှာ key အရင်ထည့်ပါ။");
+    return;
+  }
+  try{
+    var defaultPlaceholder="ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်";
+    var existingScript=$("scriptText").value.trim();
+    var hasManualScript = existingScript && existingScript !== defaultPlaceholder && existingScript.length >= 20;
+    if (hasManualScript){
+      autoSetProgress("Step 1/3: Manual script found in the script box — using it (skipping transcription/script generation)…");
+      log("AUTO: using manual script from script box ("+existingScript.length+" chars), skipping transcription.");
+    } else {
+      autoSetProgress("Step 1/3: Transcribing video audio with Gemini (your key, in-browser audio extraction)… please wait, page ကို ဖွင့်ထားပါ။");
+      var transcript=await autoTranscribeWithGemini();
+      log("AUTO transcript received ("+transcript.length+" chars).");
+      autoSetProgress("Step 2/3: Making a natural Burmese recap script from the transcript with Gemini…");
+      var prompt="Write a natural, spoken Burmese movie-recap narration script from the transcript below. Spoken Burmese only, no stage directions, no English, one flowing narration. Keep it concise and faithful to the transcript — do not invent plot points.\n\nTranscript:\n"+transcript;
+      var sj=await geminiGenerate("gemini-2.5-flash", {contents:[{parts:[{text:prompt}]}]});
+      var scriptOut=geminiTextOf(sj);
+      if (!scriptOut) throw new Error("Gemini returned no script (empty candidates)");
+      $("scriptText").value=scriptOut;
+      log("AUTO script received ("+scriptOut.length+" chars) — put into the script box (you can still edit it in the Manual path before any re-render).");
+    }
+    autoSplitSegments();
+    autoSetProgress("Step 3/3: Generating Gemini narration voice (Kore)…");
+    try{
+      await autoGenerateTts($("scriptText").value.trim());
+    }catch(e){
+      log("AUTO TTS FAILED: "+e.message+" — falling back to original video audio for this render (subtitles from the auto script, original sound, no fake narration).");
+      autoSetProgress("Gemini voice မရဘူး ("+e.message+") — original video audio နဲ့ render ဆက်လုပ်မယ် (subtitle က auto script, အသံက original)။");
+      $("audioMode").value="original"; updateAudioNote();
+    }
+    autoSetProgress("Step 4/4: Rendering on this phone CPU only… progress below, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ။");
+    // Mirror the render progress into the single auto progress line.
+    var mirror=setInterval(function(){
+      var p=$("progress"); if (p && p.textContent) $("autoProgress").textContent="Rendering (phone CPU): "+p.textContent;
+      var dl=$("downloadLink");
+      if (dl && dl.style.display!=="none"){ clearInterval(mirror); $("autoProgress").textContent="Done — download link is below (Manual: Render section): "+dl.textContent; $("autoSummary").textContent=$("summary").textContent||""; }
+      if (!running && dl && dl.style.display==="none"){ /* render finished without a link (error) — stop mirroring */ clearInterval(mirror); }
+    }, 1000);
+    $("renderBtn").click();
+  }catch(e){
+    // Honest fallback: transcription or script generation failed.
+    // Never fake it — open the Manual path and stop the chain.
+    log("AUTO CHAIN STOPPED: "+(e && e.message ? e.message : e));
+    autoSetProgress("Auto-transcription / script မရဘူး: "+(e && e.message ? e.message : e)+" — အဲဒါကို အတုမလုပ်ပေးဘူး။ Manual / advanced path ကို ဖွင့်ထားပြီ: အဲဒီမှာ script ကို paste လုပ်ပြီး Start Processing ကို ပြန်နှိပ်ပါ (paste လုပ်ထားတဲ့ script ကို သုံးပြီး voice + render အလိုအလျောက် ဆက်လုပ်မယ်), ဒါမှမဟုတ် old Start render ကို တိုက်ရိုက် နှိပ်ပါ။");
+    try{ var md=$("manualDetails"); if (md) md.open=true; }catch(err){}
+  }
 });
 
 $("cancelBtn").addEventListener("click", function(){ cancelFlag=true; log("Cancel requested — stopping at next frame."); });
