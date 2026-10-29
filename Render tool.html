@@ -57,7 +57,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v17-fast-remux, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v18-video-diag, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
 <p class="small">Tabs: <b>Video</b> → <b>Voice</b> → <b>Captions</b> → <b>Extras</b> (key + steps). Then tap <b>▶ Start render</b> in the bottom bar once — one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server) and does NOT call any VM. <b>Input is a local video file from this phone.</b> The new main flow is one tap: Start Processing auto-transcribes the video audio with YOUR OWN Gemini key (no Whisper runs in this browser — transcription is a Gemini audio call from this browser to Google, using only your key), turns it into a natural Burmese script, generates Gemini narration voice, then renders on this phone CPU only. Without a key, Start Processing cannot do the auto script/voice — use the Manual / advanced path below instead (paste a script, upload audio, old Start render). MP4, MOV and MKV are accepted; any file Chrome cannot play is auto-converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see step 2.</p>
@@ -377,7 +377,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v17-fast-remux, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v18-video-diag, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -626,6 +626,12 @@ var hevcConverting=false, hevcFFmpeg=null, hevcFFmpegLoading=null, hevcUtil=null
 // once (see loadVideoFile onerror). hevcOriginalFile keeps the original file
 // so the fallback full convert re-encodes the original, not the remuxed copy.
 var hevcRemuxAttempted=false, hevcRemuxPending=false, hevcOriginalFile=null, hevcRemuxMode=false;
+// v18 second-attachment retry state: hevcRetryAttempted = the <source>-element
+// retry has already been tried once for the current loadVideoFile call.
+// It is reset at the start of every loadVideoFile call, so each new file
+// (original, remuxed, or converted) gets exactly one retry — and a failed
+// retry can never loop, because the second onerror sees the flag set.
+var hevcRetryAttempted=false;
 var HEVC_AUTO_MSG="ဖုန်းမှာ တိုက်ရိုက် ဖွင့်မရလို့ H.264 အဖြစ် အလိုအလျောက် ပြောင်းနေတယ်… (page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ)";
 function showHevcConvert(msg){
   $("hevcConvertBtn").style.display="inline-block";
@@ -835,6 +841,7 @@ function loadVideoFile(file, alreadyConverted){
   // offered for a different video. The converted-file load path
   // (alreadyConverted=true) must NOT hide it: the save link is
   // set just before that call and must survive the load.
+  hevcRetryAttempted=false;
   if (!alreadyConverted){
     hevcAutoAttempted=false; hevcRemuxAttempted=false; hevcRemuxPending=false;
     $("convertedDownloadLink").style.display="none";
@@ -893,6 +900,45 @@ function loadVideoFile(file, alreadyConverted){
     srcW=0; srcH=0;
     var errCode="?", errMsg="";
     try{ if (v.error){ errCode=v.error.code; errMsg=v.error.message||""; } }catch(e){}
+    // v18 VIDEO DIAG (visible, not just the log): this is the number
+    // we have never obtained from the phone — error code, picker
+    // MIME type, and canPlayType for the two H.264 profiles. It is
+    // prepended to srcInfo in EVERY branch below, so the main info
+    // area always shows the file name even when metadata never loads.
+    var diagName=(srcFile && srcFile.name) ? srcFile.name : "?";
+    var diagSize=(srcFile && srcFile.size) ? (srcFile.size/1048576).toFixed(1)+" MB" : "?";
+    var diagType=(srcFile && srcFile.type) ? srcFile.type : "unknown";
+    var diagBase="", diagHigh="";
+    try{ var tv=document.createElement("video"); diagBase=tv.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')||"(empty)"; diagHigh=tv.canPlayType('video/mp4; codecs="avc1.64001F, mp4a.40.2"')||"(empty)"; }catch(e){ diagBase="canPlayType error"; diagHigh="canPlayType error"; }
+    var diagLine="🔍 Video diag — file: "+diagName+" ("+diagSize+", type: "+diagType+") | video error code: "+errCode+(errMsg?" ("+errMsg+")":"")+" | canPlayType baseline avc1.42E01E: "+diagBase+" | canPlayType high avc1.64001F: "+diagHigh;
+    log("VIDEO DIAG: "+diagLine);
+    // v18 SECOND ATTEMPT (different attachment method, once per
+    // loadVideoFile call): the first attempt sets video.src to a
+    // blob URL directly. This retry instead attaches a sliced copy
+    // of the file (explicit video/mp4 MIME) through a <source>
+    // element with preload=auto, then v.load(). If it loads, the
+    // normal onloadedmetadata path runs and Convert never starts.
+    // If it also fails, its onerror sees hevcRetryAttempted set
+    // and falls through to the existing remux/full-convert branches.
+    if (!hevcRetryAttempted){
+      hevcRetryAttempted=true;
+      try{
+        var retryBlob=srcFile.slice(0, srcFile.size, "video/mp4");
+        var retryUrl=URL.createObjectURL(retryBlob);
+        try{ v.removeAttribute("src"); }catch(e){}
+        while (v.firstChild){ v.removeChild(v.firstChild); }
+        var srcEl=document.createElement("source");
+        srcEl.src=retryUrl; srcEl.type="video/mp4";
+        v.appendChild(srcEl);
+        v.preload="auto";
+        $("srcInfo").textContent=diagLine+" — ဒုတိယနည်းနဲ့ ပြန်ဖွင့်နေတယ် (sliced blob + <source> + preload=auto)…";
+        log("VIDEO RETRY: second attachment attempt (sliced blob + <source> element + preload=auto) for "+diagName);
+        v.load();
+        return;
+      }catch(e){
+        log("VIDEO RETRY failed to start ("+e.message+") — falling through to remux/full-convert.");
+      }
+    }
     if (alreadyConverted){
       // v17 remux fallback: if the file that just failed IS the
       // remuxed file, it proved remux is not enough for this
@@ -902,6 +948,7 @@ function loadVideoFile(file, alreadyConverted){
       if (hevcRemuxPending){
         hevcRemuxPending=false;
         log("Remuxed file also failed to load in <video> — falling back to the full convert on the original file.");
+        $("srcInfo").textContent=diagLine+" — Remux file ပါ load မရဘူး, full Convert ကို သွားနေတယ်။";
         $("hevcInfo").textContent="Remux နဲ့ မရဘူး — full Convert (ultrafast + 480p) လုပ်နေတယ်… page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ";
         if (hevcOriginalFile) srcFile=hevcOriginalFile;
         hevcAutoAttempted=true;
@@ -917,7 +964,7 @@ function loadVideoFile(file, alreadyConverted){
       // Gallery distinguishes "output is corrupt" from "<video>
       // refuses this blob". Report size + ret + error code.
       var dg=window.__convertedDiag||{};
-      var diagText="Converted H.264 file load မရဘူး — ဒါပေမယ့် converted output ကို အရင် စစ်ပြီးပြီ (size="+(dg.size||"?")+" bytes, ffmpeg ret="+(dg.ret!==undefined?dg.ret:"?")+", video error code="+errCode+(errMsg?" ("+errMsg+")":"")+")။ Gallery plays this file, so the output is valid — please refresh the page and choose the saved -h264.mp4 file directly (fresh first load, no Convert needed). Gallery မှာ ရရင် output မှန်တယ်, ဒီ page session ထဲမှာ <video> က ဒုတိယအကြိမ် load ကို လက်မခံတာပဲ ပြဿနာပါ။ အပေါ်က ⬇️ Save link နဲ့ converted file ကို သိမ်းပြီး, page ကို refresh လုပ်ပြီး အဲဒီ saved -h264.mp4 file ကိုပဲ တိုက်ရိုက်ရွေးပါ (fresh first load, Convert ပြန်နှိပ်စရာ မလိုဘူး)။ ဒီ diagnostic စာသား (size / ret / error code) အတိုင်း ပြန်ပြောပေးပါ, တခြား video စမ်းစရာ မလိုဘူး။";
+      var diagText=diagLine+" — Converted H.264 file load မရဘူး — ဒါပေမယ့် converted output ကို အရင် စစ်ပြီးပြီ (size="+(dg.size||"?")+" bytes, ffmpeg ret="+(dg.ret!==undefined?dg.ret:"?")+", video error code="+errCode+(errMsg?" ("+errMsg+")":"")+")။ Gallery plays this file, so the output is valid — please refresh the page and choose the saved -h264.mp4 file directly (fresh first load, no Convert needed). Gallery မှာ ရရင် output မှန်တယ်, ဒီ page session ထဲမှာ <video> က ဒုတိယအကြိမ် load ကို လက်မခံတာပဲ ပြဿနာပါ။ အပေါ်က ⬇️ Save link နဲ့ converted file ကို သိမ်းပြီး, page ကို refresh လုပ်ပြီး အဲဒီ saved -h264.mp4 file ကိုပဲ တိုက်ရိုက်ရွေးပါ (fresh first load, Convert ပြန်နှိပ်စရာ မလိုဘူး)။ ဒီ diagnostic စာသား (size / ret / error code) အတိုင်း ပြန်ပြောပေးပါ, တခြား video စမ်းစရာ မလိုဘူး။";
       $("srcInfo").textContent=diagText;
       log("ERROR: converted H.264 file failed to load in <video> (size="+(dg.size||"?")+", ffmpeg ret="+(dg.ret!==undefined?dg.ret:"?")+", video error code="+errCode+"). Output was validated as non-empty MP4 with ftyp before load, so this is a <video>/blob issue or a Chrome codec rejection, not a proven corrupt output. Save link kept visible for a Gallery test.");
       // Deliberately do NOT hideHevcConvert() here: the user must
@@ -925,7 +972,7 @@ function loadVideoFile(file, alreadyConverted){
       $("hevcConvertBtn").style.display="inline-block"; $("hevcConvertBtn").disabled=false;
       if (convertedDownloadUrl){ $("convertedDownloadLink").style.display="block"; $("convertedSaveInfo").style.display="block"; }
     } else {
-      $("srcInfo").textContent="Video load မအောင်ဘူး — Chrome က ဒီ file ကို ဖွင့်လို့မရဘူး (MP4 HEVC, MOV/QuickTime, ဒါမှမဟုတ် MKV codec — Gallery မှာ ရပေမယ့် Chrome Android က လက်မခံတာမျိုး)။ အောက်က 🔄 Convert button ကို နှိပ်ပါ — tool က ဖုန်းထဲမှာပဲ H.264 MP4 ပြောင်းပေးမယ်, CapCut မလိုဘူး, file အပြင်ကို မထွက်ဘူး။";
+      $("srcInfo").textContent=diagLine+" — Video load မအောင်ဘူး — Chrome က ဒီ file ကို ဖွင့်လို့မရဘူး (MP4 HEVC, MOV/QuickTime, ဒါမှမဟုတ် MKV codec — Gallery မှာ ရပေမယ့် Chrome Android က လက်မခံတာမျိုး)။ အောက်က 🔄 Convert button ကို နှိပ်ပါ — tool က ဖုန်းထဲမှာပဲ H.264 MP4 ပြောင်းပေးမယ်, CapCut မလိုဘူး, file အပြင်ကို မထွက်ဘူး။";
       log("ERROR: video element failed to load this file (no supported sources, video error code="+errCode+"). Container/codec Chrome cannot play (HEVC MP4, MOV/QuickTime, or MKV codec). Auto-convert will start for MP4/MOV/MKV (no CapCut needed).");
       // v11 AUTO-CONVERT (hands-off): a newly chosen original file
       // that Chrome cannot play starts the SAME convert flow by
