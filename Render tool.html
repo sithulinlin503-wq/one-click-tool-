@@ -57,7 +57,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v20-aac-direct, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v21-skip-audio, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
 <p class="small">Tabs: <b>Video</b> → <b>Voice</b> → <b>Captions</b> → <b>Extras</b> (key + steps). Then tap <b>▶ Start render</b> in the bottom bar once — one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server) and does NOT call any VM. <b>Input is a local video file from this phone.</b> The new main flow is one tap: Start Processing auto-transcribes the video audio with YOUR OWN Gemini key (no Whisper runs in this browser — transcription is a Gemini audio call from this browser to Google, using only your key), turns it into a natural Burmese script, generates Gemini narration voice, then renders on this phone CPU only. Without a key, Start Processing cannot do the auto script/voice — use the Manual / advanced path below instead (paste a script, upload audio, old Start render). MP4, MOV and MKV are accepted; any file Chrome cannot play is auto-converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see step 2.</p>
@@ -90,6 +90,7 @@
 <p class="small">Why some uploads feel smooth and some do not: a small H.264 file (like a 720×1280, few-MB clip) loads instantly in Chrome. A &gt;100MB HEVC file still needs the in-phone Auto-Convert below — the tabbed layout does not make that convert instant, it only makes the steps clearer.</p>
 <video id="srcVideo" controls playsinline muted></video>
 <p id="srcInfo" class="small">No file chosen yet.</p>
+<button id="hevcSkipAudioBtn" style="display:none">⏭️ Audio ကျော်ပြီး Video ပဲ သုံး (Skip audio)</button>
 <button id="hevcConvertBtn" style="display:none">🔄 Convert to H.264 MP4 (ဖုန်းထဲမှာပဲ — MP4 / MOV / MKV အားလုံးရ, CapCut မလိုဘူး)</button>
 <p id="hevcInfo" class="small" style="display:none"></p>
 <p><a id="convertedDownloadLink" style="display:none"></a></p>
@@ -377,7 +378,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v20-aac-direct, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v21-skip-audio, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -638,6 +639,19 @@ var hevcRemuxAttempted=false, hevcRemuxPending=false, hevcOriginalFile=null, hev
 // the audio to clean AAC LC (-c:v copy, no libx264) keeps the step to
 // seconds even for a long file, and is the correct fix for this error.
 var hevcAacfixAttempted=false, hevcAacfixPending=false, hevcAacfixMode=false;
+// v21 SKIP-AUDIO state: hevcNoaudioAttempted = video-only (no audio)
+// tried once for the current original file (reset on a new original
+// choice); hevcNoaudioPending = a no-audio file is currently loading
+// — if THAT file errors, fall back to full convert once (see
+// loadVideoFile onerror). This is the SKIP the user asked for after
+// 3 days: when Chrome's demuxer rejects the AAC track, and even the
+// v19 audio re-encode is reported to fail the same way, stop trying
+// to repair the audio at all. A file with NO audio stream gives
+// Chrome's AAC demuxer nothing to reject, so the H.264 video
+// (canPlayType already "probably") must load. The honest cost is
+// stated on load: no original audio — render with Gemini narration
+// or uploaded audio, never a silent video presented as narrated.
+var hevcNoaudioAttempted=false, hevcNoaudioPending=false, hevcNoaudioMode=false;
 // v18 second-attachment retry state: hevcRetryAttempted = the <source>-element
 // retry has already been tried once for the current loadVideoFile call.
 // It is reset at the start of every loadVideoFile call, so each new file
@@ -653,10 +667,12 @@ var HEVC_AUTO_MSG="ဖုန်းမှာ တိုက်ရိုက် ဖ�
 function showHevcConvert(msg){
   $("hevcConvertBtn").style.display="inline-block";
   $("hevcConvertBtn").disabled=false;
+  if ($("hevcSkipAudioBtn")){ $("hevcSkipAudioBtn").style.display="inline-block"; $("hevcSkipAudioBtn").disabled=false; }
   var info=$("hevcInfo"); info.style.display="block"; if (msg) info.textContent=msg;
 }
 function hideHevcConvert(){
   $("hevcConvertBtn").style.display="none";
+  if ($("hevcSkipAudioBtn")) $("hevcSkipAudioBtn").style.display="none";
   var info=$("hevcInfo"); info.style.display="none"; info.textContent="";
 }
 async function loadHevcWasm(){
@@ -671,7 +687,8 @@ async function loadHevcWasm(){
     var ff=new ffmpegMod.FFmpeg();
     ff.on("progress", function(p){
       var pct=(p && isFinite(p.progress)) ? Math.round(p.progress*100) : 0;
-      if (hevcAacfixMode){ $("hevcInfo").textContent="Audio fix လုပ်နေတယ်… "+pct+"% (video မပြောင်းဘဲ audio ကိုပဲ AAC အသန့် ပြန်ရေးခြင်း, စက္ကန့်ပိုင်း — video re-encode မဟုတ်ဘူး, page ကို ဖွင့်ထားပါ)"; }
+      if (hevcNoaudioMode){ $("hevcInfo").textContent="Audio ကျော်နေတယ်… "+pct+"% (video ကိုပဲ copy လုပ်, audio track လုံးဝ မပါ — Chrome AAC demuxer ကို ကျော်သွားဖို့, စက္ကန့်ပိုင်း — video re-encode မဟုတ်ဘူး, page ကို ဖွင့်ထားပါ)"; }
+      else if (hevcAacfixMode){ $("hevcInfo").textContent="Audio fix လုပ်နေတယ်… "+pct+"% (video မပြောင်းဘဲ audio ကိုပဲ AAC အသန့် ပြန်ရေးခြင်း, စက္ကန့်ပိုင်း — video re-encode မဟုတ်ဘူး, page ကို ဖွင့်ထားပါ)"; }
       else if (hevcRemuxMode){ $("hevcInfo").textContent="Remux လုပ်နေတယ်… "+pct+"% (re-encode မလုပ်ဘဲ ပြန်စီခြင်း — codec ကို မထိဘဲ container ပဲ ပြန်စီတာ, စက္ကန့်ပိုင်းပဲ ကြာမယ်, page ကို ဖွင့်ထားပါ)"; }
       else { $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ — ultrafast + 480p သေးတဲ့ file နဲ့ ပိုမြန်အောင် ပြောင်းနေတယ်, ဒီ converted file ကနေ render လုပ်ရင် 480p ထွက်မယ်, 720p မဟုတ်ဘူး)"; }
     });
@@ -736,7 +753,8 @@ async function convertHevcToH264(autoMode){
   // full convert is the correct next step for it anyway.
   var _skipRemux = (arguments.length > 1 && arguments[1] === true);
   var _skipAacfix = (arguments.length > 2 && arguments[2] === true);
-  var _isSavedFile = /-(h264|remux|aacfix)\.mp4$/i.test(srcFile.name);
+  var _skipNoaudio = (arguments.length > 3 && arguments[3] === true);
+  var _isSavedFile = /-(h264|remux|aacfix|noaudio)\.mp4$/i.test(srcFile.name);
   if (!_skipRemux && !_isSavedFile && !hevcRemuxAttempted && !hevcRemuxPending){
     hevcRemuxAttempted=true; hevcOriginalFile=srcFile; hevcRemuxMode=true;
     $("hevcInfo").textContent="Remux လုပ်နေတယ်… (H.264 file ဖြစ်နိုင်လို့ re-encode မလုပ်ဘဲ container ပဲ အမြန် ပြန်စီမယ်, စက္ကန့်ပိုင်းပဲ ကြာမယ် — ရရင် Convert အရှည် လုံးဝ မလိုဘူး)";
@@ -845,6 +863,67 @@ async function convertHevcToH264(autoMode){
       $("hevcInfo").textContent=autoMode ? (HEVC_AUTO_MSG+" — audio fix မရလို့ full Convert လုပ်နေတယ်…") : "Audio fix မရလို့ full Convert လုပ်နေတယ်…";
     }
   }
+  // v21 SKIP-AUDIO (runs after copy-remux and audio re-encode,
+  // auto and manual alike): when the AAC track itself is what
+  // Chrome rejects, and the audio re-encode is also reported to
+  // fail the same way, stop repairing audio entirely. Copy ONLY
+  // the video stream and drop the audio stream completely.
+  // With no audio stream, Chrome's AAC demuxer has nothing to
+  // reject, so the H.264 video must load if H.264 is supported
+  // (canPlayType already says "probably" for both profiles).
+  // It stays seconds even for a long file (video copy only).
+  // If the no-audio file loads, no full convert runs. If it also
+  // fails, the onerror handler falls back to full convert once.
+  // If ffmpeg itself fails, fall through to full convert in
+  // THIS call, silently like remux/aacfix.
+  // Explicit-skip calls (manual skip button, or the aacfix-failed
+  // fallback) pass skipRemux+skipAacfix, so they may run this
+  // step even on a saved file — that is the manual skip path,
+  // and the output name (-noaudio.mp4) prevents any loop.
+  if (!_skipNoaudio && !hevcNoaudioAttempted && !hevcNoaudioPending && (!_isSavedFile || (_skipRemux && _skipAacfix))){
+    hevcNoaudioAttempted=true; if (!hevcOriginalFile) hevcOriginalFile=srcFile; hevcNoaudioMode=true;
+    $("hevcInfo").textContent="Audio ကျော်နေတယ်… (video ကိုပဲ copy လုပ်, audio track လုံးဝ မပါ — Chrome AAC demuxer ကို ကျော်သွားဖို့, စက္ကန့်ပိုင်း — video re-encode မဟုတ်ဘူး)";
+    log("v21 skip-audio: trying video-copy + NO audio for "+srcFile.name+" — no audio stream means Chrome's AAC demuxer has nothing to reject.");
+    try{
+      var nff=await loadHevcWasm();
+      var nInputData=await hevcUtil.fetchFile(srcFile);
+      var nExtMatch=srcFile.name.match(/\.([A-Za-z0-9]+)$/);
+      var nInExt=nExtMatch ? nExtMatch[1].toLowerCase() : "mp4";
+      if (["mp4","mov","mkv","m4v","webm"].indexOf(nInExt) < 0) nInExt="mp4";
+      var nInName="input."+nInExt;
+      await nff.writeFile(nInName, nInputData);
+      var nRet=await nff.exec(["-i",nInName,"-map","0:v:0","-c:v","copy","-an","-movflags","+faststart","output.mp4"], -1);
+      if (nRet !== 0) throw new Error("noaudio ffmpeg exited with code "+nRet);
+      var nOutRaw=await nff.readFile("output.mp4");
+      var nOut=nOutRaw.slice ? nOutRaw.slice() : nOutRaw;
+      if (!nOut || !nOut.length) throw new Error("noaudio output empty");
+      if (nOut.length < 8 || nOut[4]!==0x66 || nOut[5]!==0x74 || nOut[6]!==0x79 || nOut[7]!==0x70) throw new Error("noaudio output missing ftyp header");
+      var nBlob=new Blob([nOut], {type:"video/mp4"});
+      var nName=srcFile.name.replace(/\.[^.]+$/, "").replace(/[\\\/:*?"<>|]/g, "_").trim() || "videoonly";
+      nName+="-noaudio.mp4";
+      try{ await nff.deleteFile(nInName); await nff.deleteFile("output.mp4"); }catch(e){}
+      hevcNoaudioMode=false;
+      if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} }
+      convertedDownloadUrl=URL.createObjectURL(nBlob);
+      var nSaveLink=$("convertedDownloadLink");
+      nSaveLink.href=convertedDownloadUrl;
+      nSaveLink.download=nName;
+      nSaveLink.textContent="⬇️ Save video-only file: "+nName+" (original audio ကို ကျော်လိုက်ပြီ — audio track မပါဘူး, နောက်တခါ ဒီ file ကိုပဲ တိုက်ရိုက်ရွေးပါ, Convert မလိုဘူး)";
+      nSaveLink.style.display="block";
+      $("convertedSaveInfo").style.display="block";
+      $("hevcInfo").textContent="Audio ကျော်ပြီးပြီ — video-only file ကို load လုပ်နေတယ်… အပေါ်က ⬇️ Save link နဲ့ သိမ်းထားပါ။";
+      log("Skip-audio done: "+nBlob.size+" bytes -> "+nName+" — loading it on a fresh <video> element; if it loads, no full convert runs.");
+      hevcNoaudioPending=true;
+      hevcConverting=false; $("hevcConvertBtn").disabled=false;
+      loadVideoFile(new File([nBlob], nName, {type:"video/mp4"}), true);
+      return;
+    }catch(ne){
+      hevcNoaudioMode=false;
+      log("Skip-audio did not produce a usable file ("+(ne && ne.message ? ne.message : ne)+") — falling through to the full convert in this same call.");
+      try{ if (hevcFFmpeg) await hevcFFmpeg.deleteFile("output.mp4"); }catch(e){}
+      $("hevcInfo").textContent=autoMode ? (HEVC_AUTO_MSG+" — audio ကျော်လည်း မရလို့ full Convert လုပ်နေတယ်…") : "Audio ကျော်လည်း မရလို့ full Convert လုပ်နေတယ်…";
+    }
+  }
   try{
     var ff=await loadHevcWasm();
     $("hevcInfo").textContent="ပြောင်းနေတယ်… 0% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့ — အခု ultrafast + 480p သေးတဲ့ file နဲ့ ကြီး/ရှည်တဲ့ video တွေ ပိုမြန်အောင် ပြောင်းနေတယ်, ဒီ converted file ကနေ render လုပ်ရင် 480p ထွက်မယ်, 720p မဟုတ်ဘူး, instant မဟုတ်ဘူး)";
@@ -917,6 +996,14 @@ async function convertHevcToH264(autoMode){
   }
 }
 $("hevcConvertBtn").addEventListener("click", function(){ convertHevcToH264(false); });
+$("hevcSkipAudioBtn").addEventListener("click", function(){
+  if (hevcConverting){ $("hevcInfo").style.display="block"; $("hevcInfo").textContent="Convert/audio-fix လုပ်နေတုန်း — ပြီးမှ ထပ်နှိပ်ပါ။"; return; }
+  if (hevcNoaudioAttempted && !hevcNoaudioPending){ $("hevcInfo").style.display="block"; $("hevcInfo").textContent="Audio ကျော်တာ ဒီ file အတွက် တခါ လုပ်ပြီးပြီ — full Convert ကို သုံးပါ။"; return; }
+  if (hevcOriginalFile) srcFile=hevcOriginalFile;
+  if (!srcFile){ alert("Video file အရင်ရွေးပါ။"); return; }
+  $("hevcInfo").style.display="block";
+  convertHevcToH264(false, true, true, false);
+});
 function loadVideoFile(file, alreadyConverted){
   srcFile=file; if(!srcFile) return;
   if (hevcRetryTimer){ try{ clearTimeout(hevcRetryTimer); }catch(e){} hevcRetryTimer=null; }
@@ -927,7 +1014,7 @@ function loadVideoFile(file, alreadyConverted){
   // set just before that call and must survive the load.
   hevcRetryAttempted=false;
   if (!alreadyConverted){
-    hevcAutoAttempted=false; hevcRemuxAttempted=false; hevcRemuxPending=false; hevcAacfixAttempted=false; hevcAacfixPending=false; hevcAacfixMode=false;
+    hevcAutoAttempted=false; hevcRemuxAttempted=false; hevcRemuxPending=false; hevcAacfixAttempted=false; hevcAacfixPending=false; hevcAacfixMode=false; hevcNoaudioAttempted=false; hevcNoaudioPending=false; hevcNoaudioMode=false;
     $("convertedDownloadLink").style.display="none";
     $("convertedSaveInfo").style.display="none";
     if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} convertedDownloadUrl=null; }
@@ -1011,7 +1098,7 @@ function loadVideoFile(file, alreadyConverted){
     // -h264/-remux/-aacfix files fall through to normal flow.
     var isAacError = (errMsg && errMsg.indexOf("DEMUXER_ERROR_DETECTED_AAC") >= 0);
     if (isAacError && !alreadyConverted && !hevcAacfixAttempted && !hevcAutoAttempted && !hevcConverting){
-      var isSavedAacDirect = srcFile && /-(h264|remux|aacfix)\.mp4$/i.test(srcFile.name);
+      var isSavedAacDirect = srcFile && /-(h264|remux|aacfix|noaudio)\.mp4$/i.test(srcFile.name);
       if (!isSavedAacDirect){
         hevcRetryAttempted=true;
         hevcAutoAttempted=true;
@@ -1072,6 +1159,16 @@ function loadVideoFile(file, alreadyConverted){
       // enough for this file — run the full convert ONCE on the
       // ORIGINAL file (restored from hevcOriginalFile, so the
       // output name stays clean), skipping both remux and aacfix.
+      if (hevcNoaudioPending){
+        hevcNoaudioPending=false;
+        log("Video-only (no-audio) file also failed to load in <video> — falling back to the full convert on the original file.");
+        $("srcInfo").textContent=diagLine+" — Audio ကျော်ထားတဲ့ video-only file ပါ load မရဘူး, full Convert ကို သွားနေတယ်။";
+        $("hevcInfo").textContent="Audio ကျော်လည်း မရဘူး — full Convert (ultrafast + 480p) လုပ်နေတယ်… page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ";
+        if (hevcOriginalFile) srcFile=hevcOriginalFile;
+        hevcAutoAttempted=true;
+        convertHevcToH264(true, true, true, true);
+        return;
+      }
       if (hevcAacfixPending){
         hevcAacfixPending=false;
         log("Audio-fixed file also failed to load in <video> — falling back to the full convert on the original file.");
@@ -1079,7 +1176,7 @@ function loadVideoFile(file, alreadyConverted){
         $("hevcInfo").textContent="Audio fix နဲ့ မရဘူး — full Convert (ultrafast + 480p) လုပ်နေတယ်… page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ";
         if (hevcOriginalFile) srcFile=hevcOriginalFile;
         hevcAutoAttempted=true;
-        convertHevcToH264(true, true, true);
+        convertHevcToH264(true, true, true, false);
         return;
       }
       // v17 remux fallback: if the file that just failed IS the
@@ -1128,7 +1225,7 @@ function loadVideoFile(file, alreadyConverted){
       // that already loaded (this handler only runs on failure).
       // The 200MB cap is enforced inside convertHevcToH264, which
       // refuses with a plain reason instead of attempting.
-      var isSavedH264 = srcFile && /-(h264|remux|aacfix)\.mp4$/i.test(srcFile.name);
+      var isSavedH264 = srcFile && /-(h264|remux|aacfix|noaudio)\.mp4$/i.test(srcFile.name);
       // v.src must already be the chosen file's blob URL: this
       // rules out any spurious error from the pre-src reset
       // (removeAttribute+load() before src is attached).
@@ -1148,9 +1245,12 @@ function loadVideoFile(file, alreadyConverted){
     if (hevcRetryTimer){ try{ clearTimeout(hevcRetryTimer); }catch(e){} hevcRetryTimer=null; }
     if (hevcRemuxPending){ hevcRemuxPending=false; log("Remuxed file loaded OK — no full convert needed."); }
     if (hevcAacfixPending){ hevcAacfixPending=false; log("Audio-fixed file loaded OK — no full convert needed."); }
+    var _wasNoaudio=false;
+    if (hevcNoaudioPending){ hevcNoaudioPending=false; _wasNoaudio=true; log("Video-only (no-audio) file loaded OK — original audio skipped, no full convert needed."); try{ var _na=$("narrAudio"); if (_na && _na.src){ $("audioMode").value="gemini"; } else { $("audioMode").value="silent"; } updateAudioNote(); var _an=$("audioModeNote"); if (_an) _an.textContent+=" — Original audio ကို ကျော်လိုက်ပြီ — ဒီ video မှာ original အသံ မပါဘူး, render လုပ်ရင် Gemini TTS narration (သို့) uploaded audio ကိုပဲ သုံးမယ်"; }catch(e){} }
     hideHevcConvert();
     srcDuration=v.duration; srcW=v.videoWidth; srcH=v.videoHeight;
     $("srcInfo").textContent="File: "+srcFile.name+" — "+srcW+"×"+srcH+", "+srcDuration.toFixed(1)+"s. Long or short, it renders in one go — Preview above shows the first frame.";
+    if (_wasNoaudio){ $("srcInfo").textContent+=" — Original audio ကို ကျော်လိုက်ပြီ — ဒီ video မှာ original အသံ မပါဘူး, render လုပ်ရင် Gemini TTS narration (သို့) uploaded audio ကိုပဲ သုံးမယ်"; }
     log("Loaded: "+srcW+"×"+srcH+", duration "+srcDuration.toFixed(2)+"s"); updateBottomVideo();
     if (!segments.length){ segments=[{text:$("scriptText").value.trim() || "ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်"}]; }
     computeTimedSegments(srcDuration); renderSegmentsText();
