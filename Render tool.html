@@ -41,7 +41,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v10-second-load, 2026-10-29.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v11-auto-convert, 2026-10-29.</b> Static, phone-only — no server, no upload.</p>
 <p class="small"><b>1</b> file → <b>2</b> script → <b>3</b> Gemini (optional) → <b>4</b> audio → <b>5</b> Preview → <b>6</b> render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server), and does NOT call any VM. <b>Input is a local video file from this phone.</b> Script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only. MP4, MOV and MKV are accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see section 1.</p>
@@ -70,7 +70,7 @@
 <label>Choose video file — MP4, MOV or MKV
 <input type="file" id="fileInput" accept="video/*,.mp4,.mov,.mkv,.m4v,.webm"></label>
 <details><summary>ℹ️ Details</summary>
-<p class="small">If Chrome cannot play your file (MOV/QuickTime is not supported in Chrome; MKV support is codec-dependent), the 🔄 Convert button below converts it to H.264 MP4 inside this phone — no rename, no CapCut, no upload. Link paste does NOT work here (browsers cannot download YouTube/TikTok videos); download a link first with the Telegram bot, then choose that file here.</p>
+<p class="small">If Chrome cannot play your file (MOV/QuickTime is not supported in Chrome; MKV support is codec-dependent), the tool converts it to H.264 MP4 inside this phone AUTOMATICALLY — no tap needed (the 🔄 Convert button below stays as a manual fallback) — no rename, no CapCut, no upload. Link paste does NOT work here (browsers cannot download YouTube/TikTok videos); download a link first with the Telegram bot, then choose that file here.</p>
 </details>
 <video id="srcVideo" controls playsinline muted></video>
 <p id="srcInfo" class="small">No file chosen yet.</p>
@@ -299,7 +299,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v10-second-load, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v11-auto-convert, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in section 1 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -541,7 +541,8 @@ function applySegmentEdits(){
 // is a 200 MB input cap, because input+output live in tab memory
 // and a larger file risks a tab crash. Progress is shown; on any
 // failure the button stays available to retry.
-var hevcConverting=false, hevcFFmpeg=null, hevcFFmpegLoading=null, hevcUtil=null, convertedDownloadUrl=null;
+var hevcConverting=false, hevcFFmpeg=null, hevcFFmpegLoading=null, hevcUtil=null, convertedDownloadUrl=null, hevcAutoAttempted=false;
+var HEVC_AUTO_MSG="ဖုန်းမှာ တိုက်ရိုက် ဖွင့်မရလို့ H.264 အဖြစ် အလိုအလျောက် ပြောင်းနေတယ်… (page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ)";
 function showHevcConvert(msg){
   $("hevcConvertBtn").style.display="inline-block";
   $("hevcConvertBtn").disabled=false;
@@ -597,7 +598,7 @@ async function loadHevcWasm(){
   hevcFFmpegLoading=hevcFFmpegLoading.catch(function(e){ hevcFFmpegLoading=null; throw e; });
   return hevcFFmpegLoading;
 }
-async function convertHevcToH264(){
+async function convertHevcToH264(autoMode){
   if (hevcConverting) return;
   if (!srcFile){ alert("Video file အရင်ရွေးပါ။"); return; }
   // Memory guard only (no duration cap — long videos are allowed):
@@ -607,10 +608,10 @@ async function convertHevcToH264(){
   // it just takes longer on phone WASM.
   if (srcFile.size > 200*1024*1024){
     var msg="ဒီ file ကြီးလွန်းတယ် ("+(srcFile.size/1048576).toFixed(0)+" MB) — ဖုန်းထဲမှာ WASM နဲ့ ပြောင်းရင် input+output က tab memory ထဲမှာ ရှိနေလို့ tab crash ဖြစ်နိုင်တယ်။ 200MB အောက် file တွေကတော့ အရှည်ဖြစ်ဖြစ် တခါထဲ ပြောင်းလို့ရတယ်, အချိန်ပဲ ကြာမယ်။";
-    $("hevcInfo").textContent=msg; log("HEVC convert refused: file too large ("+srcFile.size+" bytes)."); alert(msg); return;
+    $("hevcInfo").textContent=msg; log("HEVC convert refused: file too large ("+srcFile.size+" bytes)."); if (!autoMode) alert(msg); return;
   }
   hevcConverting=true; $("hevcConvertBtn").disabled=true;
-  $("hevcInfo").textContent="ffmpeg.wasm download လုပ်နေတယ်… (ပထမအကြိမ်ပဲ ~30MB, browser cache ထဲမှာ ကျန်မယ်, Wi-Fi ရှိရင် ပိုကောင်း — video ရှည်ရင် ပြောင်းတာ ကြာမယ်, page ကို ဖွင့်ထားပါ)";
+  $("hevcInfo").textContent=autoMode ? (HEVC_AUTO_MSG+" — ffmpeg.wasm download လုပ်နေတယ်… (ပထမအကြိမ်ပဲ ~30MB, browser cache ထဲမှာ ကျန်မယ်, Wi-Fi ရှိရင် ပိုကောင်း)") : "ffmpeg.wasm download လုပ်နေတယ်… (ပထမအကြိမ်ပဲ ~30MB, browser cache ထဲမှာ ကျန်မယ်, Wi-Fi ရှိရင် ပိုကောင်း — video ရှည်ရင် ပြောင်းတာ ကြာမယ်, page ကို ဖွင့်ထားပါ)";
   log("Convert started for "+srcFile.name+" ("+(srcFile.size/1048576).toFixed(1)+" MB, type="+(srcFile.type||"unknown")+") — MP4/MOV/MKV all go through this same path.");
   try{
     var ff=await loadHevcWasm();
@@ -680,7 +681,7 @@ async function convertHevcToH264(){
     hevcConverting=false;
   }
 }
-$("hevcConvertBtn").addEventListener("click", convertHevcToH264);
+$("hevcConvertBtn").addEventListener("click", function(){ convertHevcToH264(false); });
 function loadVideoFile(file, alreadyConverted){
   srcFile=file; if(!srcFile) return;
   // A new original file makes any previous converted download
@@ -689,6 +690,7 @@ function loadVideoFile(file, alreadyConverted){
   // (alreadyConverted=true) must NOT hide it: the save link is
   // set just before that call and must survive the load.
   if (!alreadyConverted){
+    hevcAutoAttempted=false;
     $("convertedDownloadLink").style.display="none";
     $("convertedSaveInfo").style.display="none";
     if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} convertedDownloadUrl=null; }
@@ -757,8 +759,31 @@ function loadVideoFile(file, alreadyConverted){
       if (convertedDownloadUrl){ $("convertedDownloadLink").style.display="block"; $("convertedSaveInfo").style.display="block"; }
     } else {
       $("srcInfo").textContent="Video load မအောင်ဘူး — Chrome က ဒီ file ကို ဖွင့်လို့မရဘူး (MP4 HEVC, MOV/QuickTime, ဒါမှမဟုတ် MKV codec — Gallery မှာ ရပေမယ့် Chrome Android က လက်မခံတာမျိုး)။ အောက်က 🔄 Convert button ကို နှိပ်ပါ — tool က ဖုန်းထဲမှာပဲ H.264 MP4 ပြောင်းပေးမယ်, CapCut မလိုဘူး, file အပြင်ကို မထွက်ဘူး။";
-      log("ERROR: video element failed to load this file (no supported sources, video error code="+errCode+"). Container/codec Chrome cannot play (HEVC MP4, MOV/QuickTime, or MKV codec). In-tool convert offered for MP4/MOV/MKV (no CapCut needed).");
-      showHevcConvert("🔄 Convert button နှိပ်ရင် ဖုန်းထဲမှာပဲ H.264 MP4 ပြောင်းပေးမယ် (MP4 / MOV / MKV အားလုံးရ, ပထမအကြိမ် ffmpeg.wasm ~30MB download လိုတယ်, Wi-Fi ရှိရင် ပိုကောင်း)။ Video အရှည်ဖြစ်ဖြစ် တခါထဲ ပြောင်းလို့ရတယ်, ရှည်ရင် အချိန်ကြာမယ် — page ကို ဖွင့်ထားပါ။");
+      log("ERROR: video element failed to load this file (no supported sources, video error code="+errCode+"). Container/codec Chrome cannot play (HEVC MP4, MOV/QuickTime, or MKV codec). Auto-convert will start for MP4/MOV/MKV (no CapCut needed).");
+      // v11 AUTO-CONVERT (hands-off): a newly chosen original file
+      // that Chrome cannot play starts the SAME convert flow by
+      // itself — no tap required. The manual Convert button stays
+      // visible as a fallback (re-enabled if auto fails). Guards:
+      // never auto-convert an already-converted -h264.mp4 file
+      // (that would loop), never twice for the same file, never
+      // while a convert is already running, and never for a file
+      // that already loaded (this handler only runs on failure).
+      // The 200MB cap is enforced inside convertHevcToH264, which
+      // refuses with a plain reason instead of attempting.
+      var isSavedH264 = srcFile && /-h264\.mp4$/i.test(srcFile.name);
+      // v.src must already be the chosen file's blob URL: this
+      // rules out any spurious error from the pre-src reset
+      // (removeAttribute+load() before src is attached).
+      var hasBlobSrc = v && v.src && v.src.indexOf("blob:")===0;
+      if (hasBlobSrc && !isSavedH264 && !hevcAutoAttempted && !hevcConverting){
+        hevcAutoAttempted=true;
+        showHevcConvert(HEVC_AUTO_MSG);
+        log("AUTO-CONVERT: starting convert automatically for "+(srcFile?srcFile.name:"?")+" (no tap required; manual Convert button kept as fallback).");
+        convertHevcToH264(true);
+      } else {
+        if (isSavedH264) log("AUTO-CONVERT skipped: file is already a saved -h264.mp4 (no loop). Manual Convert kept as fallback.");
+        showHevcConvert("🔄 Convert button နှိပ်ရင် ဖုန်းထဲမှာပဲ H.264 MP4 ပြောင်းပေးမယ် (MP4 / MOV / MKV အားလုံးရ, ပထမအကြိမ် ffmpeg.wasm ~30MB download လိုတယ်, Wi-Fi ရှိရင် ပိုကောင်း)။ Video အရှည်ဖြစ်ဖြစ် တခါထဲ ပြောင်းလို့ရတယ်, ရှည်ရင် အချိန်ကြာမယ် — page ကို ဖွင့်ထားပါ။");
+      }
     }
   };
   v.onloadedmetadata=function(){
