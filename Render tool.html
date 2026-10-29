@@ -57,7 +57,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v19-aac-fix, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v20-aac-direct, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
 <p class="small">Tabs: <b>Video</b> → <b>Voice</b> → <b>Captions</b> → <b>Extras</b> (key + steps). Then tap <b>▶ Start render</b> in the bottom bar once — one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server) and does NOT call any VM. <b>Input is a local video file from this phone.</b> The new main flow is one tap: Start Processing auto-transcribes the video audio with YOUR OWN Gemini key (no Whisper runs in this browser — transcription is a Gemini audio call from this browser to Google, using only your key), turns it into a natural Burmese script, generates Gemini narration voice, then renders on this phone CPU only. Without a key, Start Processing cannot do the auto script/voice — use the Manual / advanced path below instead (paste a script, upload audio, old Start render). MP4, MOV and MKV are accepted; any file Chrome cannot play is auto-converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see step 2.</p>
@@ -377,7 +377,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v19-aac-fix, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v20-aac-direct, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -644,6 +644,11 @@ var hevcAacfixAttempted=false, hevcAacfixPending=false, hevcAacfixMode=false;
 // (original, remuxed, or converted) gets exactly one retry — and a failed
 // retry can never loop, because the second onerror sees the flag set.
 var hevcRetryAttempted=false;
+// v20 AAC-direct + retry timeout state: hevcRetryTimer is the 15s
+// watchdog for the v18 second attachment attempt. It is cleared on
+// load, on a new file choice, and on the next onerror, so it can
+// only fire while a second attempt is genuinely stuck.
+var hevcRetryTimer=null;
 var HEVC_AUTO_MSG="ဖုန်းမှာ တိုက်ရိုက် ဖွင့်မရလို့ H.264 အဖြစ် အလိုအလျောက် ပြောင်းနေတယ်… (page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ)";
 function showHevcConvert(msg){
   $("hevcConvertBtn").style.display="inline-block";
@@ -914,6 +919,7 @@ async function convertHevcToH264(autoMode){
 $("hevcConvertBtn").addEventListener("click", function(){ convertHevcToH264(false); });
 function loadVideoFile(file, alreadyConverted){
   srcFile=file; if(!srcFile) return;
+  if (hevcRetryTimer){ try{ clearTimeout(hevcRetryTimer); }catch(e){} hevcRetryTimer=null; }
   // A new original file makes any previous converted download
   // stale — hide it (and drop its blob URL) so it is never
   // offered for a different video. The converted-file load path
@@ -990,6 +996,33 @@ function loadVideoFile(file, alreadyConverted){
     try{ var tv=document.createElement("video"); diagBase=tv.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')||"(empty)"; diagHigh=tv.canPlayType('video/mp4; codecs="avc1.64001F, mp4a.40.2"')||"(empty)"; }catch(e){ diagBase="canPlayType error"; diagHigh="canPlayType error"; }
     var diagLine="🔍 Video diag — file: "+diagName+" ("+diagSize+", type: "+diagType+") | video error code: "+errCode+(errMsg?" ("+errMsg+")":"")+" | canPlayType baseline avc1.42E01E: "+diagBase+" | canPlayType high avc1.64001F: "+diagHigh;
     log("VIDEO DIAG: "+diagLine);
+    if (hevcRetryTimer){ try{ clearTimeout(hevcRetryTimer); }catch(e){} hevcRetryTimer=null; }
+    // v20 AAC-DIRECT: DEMUXER_ERROR_DETECTED_AAC will fail again
+    // regardless of attachment method, because Chrome's demuxer
+    // rejects the AAC track itself, not the blob attachment. The
+    // v18 second attempt is therefore useless for this exact
+    // error and, as screenshots proved, looks stuck at
+    // "second method retrying..." with nothing after it. Skip
+    // it AND copy-remux (which preserves the bad AAC) entirely
+    // and go straight to aacfix: video copy + audio AAC 96k
+    // re-encode. convertHevcToH264(true, true) = auto, skip
+    // remux, do NOT skip aacfix. Only for a fresh original file
+    // that has not already had an aacfix attempt; saved
+    // -h264/-remux/-aacfix files fall through to normal flow.
+    var isAacError = (errMsg && errMsg.indexOf("DEMUXER_ERROR_DETECTED_AAC") >= 0);
+    if (isAacError && !alreadyConverted && !hevcAacfixAttempted && !hevcAutoAttempted && !hevcConverting){
+      var isSavedAacDirect = srcFile && /-(h264|remux|aacfix)\.mp4$/i.test(srcFile.name);
+      if (!isSavedAacDirect){
+        hevcRetryAttempted=true;
+        hevcAutoAttempted=true;
+        if (!hevcOriginalFile) hevcOriginalFile=srcFile;
+        $("srcInfo").textContent=diagLine+" — AAC audio က Chrome က ငြင်းလို့ video ကို မထိဘဲ audio ကိုပဲ ပြင်နေတယ် (စက္ကန့်ပိုင်း)";
+        showHevcConvert("AAC audio က Chrome က ငြင်းလို့ video ကို မထိဘဲ audio ကိုပဲ ပြင်နေတယ် (စက္ကန့်ပိုင်း)");
+        log("v20 AAC-DIRECT: DEMUXER_ERROR_DETECTED_AAC — skipping second attachment attempt and copy-remux, going straight to aacfix for "+diagName);
+        convertHevcToH264(true, true);
+        return;
+      }
+    }
     // v18 SECOND ATTEMPT (different attachment method, once per
     // loadVideoFile call): the first attempt sets video.src to a
     // blob URL directly. This retry instead attaches a sliced copy
@@ -1012,6 +1045,22 @@ function loadVideoFile(file, alreadyConverted){
         $("srcInfo").textContent=diagLine+" — ဒုတိယနည်းနဲ့ ပြန်ဖွင့်နေတယ် (sliced blob + <source> + preload=auto)…";
         log("VIDEO RETRY: second attachment attempt (sliced blob + <source> element + preload=auto) for "+diagName);
         v.load();
+        // v20 RETRY TIMEOUT: if this second attempt neither loads
+        // nor errors within 15s, the tool must never look stuck
+        // at "second method retrying..." again — proceed to
+        // remux/aacfix/full-convert anyway. Cleared on load, on
+        // the next onerror, and on a new file choice.
+        if (hevcRetryTimer){ try{ clearTimeout(hevcRetryTimer); }catch(e){} }
+        hevcRetryTimer=setTimeout(function(){
+          hevcRetryTimer=null;
+          log("v20 RETRY TIMEOUT: second attachment attempt did not resolve in 15s — proceeding to remux/aacfix/full-convert instead of looking stuck.");
+          $("srcInfo").textContent=diagLine+" — ဒုတိယ နည်းက 15 စက္ကန့်အတွင်း မပြီးလို့ remux/audio fix ကို သွားနေတယ်…";
+          if (!hevcConverting && !hevcAutoAttempted){
+            hevcAutoAttempted=true;
+            showHevcConvert(HEVC_AUTO_MSG);
+            convertHevcToH264(true);
+          }
+        }, 15000);
         return;
       }catch(e){
         log("VIDEO RETRY failed to start ("+e.message+") — falling through to remux/full-convert.");
@@ -1096,6 +1145,7 @@ function loadVideoFile(file, alreadyConverted){
     }
   };
   v.onloadedmetadata=function(){
+    if (hevcRetryTimer){ try{ clearTimeout(hevcRetryTimer); }catch(e){} hevcRetryTimer=null; }
     if (hevcRemuxPending){ hevcRemuxPending=false; log("Remuxed file loaded OK — no full convert needed."); }
     if (hevcAacfixPending){ hevcAacfixPending=false; log("Audio-fixed file loaded OK — no full convert needed."); }
     hideHevcConvert();
