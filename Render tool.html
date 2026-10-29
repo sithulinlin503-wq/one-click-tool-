@@ -37,12 +37,28 @@
   details{border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.03);border-radius:12px;padding:10px 12px;margin:10px 0}
   details p{margin:8px 0}
   .hint{font-size:13px;color:#cbd5e1;margin:8px 0}
+
+  .tabs{display:flex;gap:8px;margin:14px 0;position:sticky;top:0;z-index:20;background:#03050a;padding:8px 0}
+  .tab-btn{flex:1;min-height:48px;margin:0;font-size:15px;background:rgba(255,255,255,0.06)}
+  .tab-btn.active{background:#00E5FF;border-color:#00E5FF;color:#03050a}
+  .tab-panel{display:none}
+  .tab-panel.active{display:block}
+  .bottombar{position:sticky;bottom:0;z-index:20;background:#0a0f1a;border:1px solid rgba(0,229,255,0.45);border-radius:16px;padding:12px;margin:16px 0;display:flex;gap:10px;align-items:center}
+  .bottombar .vidname{flex:1;font-size:13px;color:#cbd5e1;word-break:break-all}
+  #startProcessingBtn{flex:0 0 auto;margin:0}
+  .bottombar #startProcessingBtn{width:auto !important;display:inline-block !important}
+  .swatches{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+  .swatch,.voice-btn,.pos-btn{margin:0;min-height:44px}
+  .swatch.active,.voice-btn.active,.pos-btn.active{background:#00E5FF;border-color:#00E5FF;color:#03050a}
+  .dropzone{border:2px dashed rgba(0,229,255,0.5);border-radius:12px;padding:16px;text-align:center;color:#cbd5e1;margin:10px 0}
+  .dropzone.over{border-color:#00E5FF;background:rgba(0,229,255,0.08)}
+  .step-pct{font-weight:800;color:#00E5FF}
 </style>
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v14-get-key, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
-<p class="small"><b>1</b> Gemini key → <b>2</b> video → <b>3</b> font / colour / blur → <b>4</b> Start Processing (one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4).</p>
+<p class="small"><b>Version: blogspot-v15-tabbed, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
+<p class="small">Tabs: <b>Video</b> → <b>Voice</b> → <b>Captions</b> → <b>Extras</b> (key + steps). Then tap <b>▶ Start render</b> in the bottom bar once — one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server) and does NOT call any VM. <b>Input is a local video file from this phone.</b> The new main flow is one tap: Start Processing auto-transcribes the video audio with YOUR OWN Gemini key (no Whisper runs in this browser — transcription is a Gemini audio call from this browser to Google, using only your key), turns it into a natural Burmese script, generates Gemini narration voice, then renders on this phone CPU only. Without a key, Start Processing cannot do the auto script/voice — use the Manual / advanced path below instead (paste a script, upload audio, old Start render). MP4, MOV and MKV are accepted; any file Chrome cannot play is auto-converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see step 2.</p>
 </details>
@@ -54,17 +70,13 @@
 <p class="small">Battery / heat: hardware encoding will warm the phone. This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee the browser keeps rendering if you leave the page.</p>
 </details>
 </div>
-<div class="box">
-<h2>1. Gemini API key — FIRST (your own key only)</h2>
-<p class="small">Enter your OWN free AI Studio key here once. It is stored ONLY in this phone browser's localStorage, sent ONLY directly from this browser to Google's Gemini API, never to the assistant, never to any VM. Delete it any time with the button below. Without a key, Start Processing cannot do auto script/voice — use the Manual / advanced path at the bottom instead.</p>
-<label>Gemini API key (password field)
-<input type="password" id="geminiKey" placeholder="Paste your own AI Studio key here"></label>
-<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="display:block;text-align:center;padding:12px;margin:8px 0;background:#1a73e8;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;">🔑 API key ယူရန် — AI Studio ကို ဖွင့်မယ် (တခါနှိပ်ရုံ)</a>
-<p class="small">AI Studio မှာ Get API key / Create API key ကို နှိပ်ပြီး ရတဲ့ key ကို Copy လုပ်ပြီး ဒီ box ထဲမှာ Paste လုပ်ပါ, ပြီးရင် 💾 Save ကို နှိပ်ပါ။ Key ကို ဒီ chat မှာ ဘယ်တော့မှ မပို့ပါနဲ့။</p>
-<button id="saveKeyBtn">💾 Save key on this phone only</button>
-<button id="delKeyBtn">🗑️ Delete key from this phone</button>
-<p id="keyInfo" class="small">No key saved.</p>
+<div class="tabs" role="tablist">
+<button type="button" class="tab-btn active" data-tab="video">🎬 Video</button>
+<button type="button" class="tab-btn" data-tab="voice">🎙️ Voice</button>
+<button type="button" class="tab-btn" data-tab="captions">💬 Captions</button>
+<button type="button" class="tab-btn" data-tab="extras">⚙️ Extras</button>
 </div>
+<div id="tab-video" class="tab-panel active">
 <div class="box">
 <h2>2. Video upload — MP4, MOV or MKV (local file only, no link)</h2>
 
@@ -73,12 +85,18 @@
 <details><summary>ℹ️ Details</summary>
 <p class="small">If Chrome cannot play your file (MOV/QuickTime is not supported in Chrome; MKV support is codec-dependent), the tool converts it to H.264 MP4 inside this phone AUTOMATICALLY — no tap needed (the 🔄 Convert button below stays as a manual fallback) — no rename, no CapCut, no upload. Link paste does NOT work here (browsers cannot download YouTube/TikTok videos); download a link first with the Telegram bot, then choose that file here.</p>
 </details>
+<div id="dropZone" class="dropzone">📥 Drag &amp; drop a video file here, or use Choose File below — local file only, no server upload.</div>
+<p class="small">Or paste a link? Link download does NOT work in-browser (browsers cannot download YouTube/TikTok videos) — download a link first with the Telegram bot, then choose that file here. This page never uploads your video anywhere.</p>
+<p class="small">Why some uploads feel smooth and some do not: a small H.264 file (like a 720×1280, few-MB clip) loads instantly in Chrome. A &gt;100MB HEVC file still needs the in-phone Auto-Convert below — the tabbed layout does not make that convert instant, it only makes the steps clearer.</p>
 <video id="srcVideo" controls playsinline muted></video>
 <p id="srcInfo" class="small">No file chosen yet.</p>
 <button id="hevcConvertBtn" style="display:none">🔄 Convert to H.264 MP4 (ဖုန်းထဲမှာပဲ — MP4 / MOV / MKV အားလုံးရ, CapCut မလိုဘူး)</button>
 <p id="hevcInfo" class="small" style="display:none"></p>
 <p><a id="convertedDownloadLink" style="display:none"></a></p>
 <p id="convertedSaveInfo" class="small" style="display:none">Converted once — save this file, and next time choose the saved H.264 file directly, no Convert needed. တခါပြောင်းပြီးရင် ဒီ file ကို သိမ်းထားပါ — နောက်တခါ ဒီ saved H.264 file ကိုပဲ တိုက်ရိုက်ရွေးပါ, Convert ပြန်နှိပ်စရာ မလိုဘူး။ H.264 MP4 files never need Convert at all; Convert is only for HEVC/MOV/MKV files Chrome cannot play.</p>
+<h3>Output ratio</h3>
+<label>Output ratio
+<select id="ratio"><option value="Original">Original (source ratio, long side ≤720)</option><option value="9:16">9:16 (720×1280, cover crop)</option></select></label>
 </div>
 <div class="box preview-box">
 <h2>Preview — အပေါ်ဆုံး (ချိန်တိုင်း ဒီမှာ ချက်ချင်း မြင်ရမယ်)</h2>
@@ -88,11 +106,23 @@
 <p class="small">Blur box ထဲကို ထိပြီး ဆွဲပါ (position), အောက်ညာထောင့်ကို ဆွဲရင် size။ စာတန်းပေါ်ကို ထိပြီး ဆွဲရင် position ပြောင်းမယ် (auto Custom, subY % ပြောင်းမယ်)။ Font ကို အောက်က slider နဲ့ ချိန်ပါ, preview မှာ ချက်ချင်း ပေါ်မယ်။ Setting ပြောင်းတိုင်း preview ဒီအပေါ်မှာ ချက်ချင်း ပြောင်းတယ်။ Preview shows the first frame only — it does not prove the full render.</p>
 </details>
 </div>
+</div>
+<div id="tab-voice" class="tab-panel">
 <div class="box">
-<h2>3. Settings — font, colour, blur</h2>
-<p class="small">Main controls here: font size, subtitle colour, original-text blur on/off, blur thickness. The other sliders (blur position/size, outline, subtitle position/width, ratio, speed) are in the same step below — adjust them, check the Preview above, then tap Start Processing.</p>
-<label>Output ratio
-<select id="ratio"><option value="Original">Original (source ratio, long side ≤720)</option><option value="9:16">9:16 (720×1280, cover crop)</option></select></label>
+<h2>Voice — narration voice, speed, pitch</h2>
+<p class="small">Pick a voice style, then speed/pitch. Voices here are browser Gemini voices (your key): Thiha-style uses a Gemini male voice, Nilar-style uses a Gemini female voice, Gemini AI uses Kore. This page does not run Edge Thiha/Nilar voices — those labels are style choices for the Gemini voice, not the Edge engine.</p>
+<div class="swatches">
+<button type="button" class="voice-btn active" data-voice="thiha">🎙️ Thiha — Male Myanmar (style)</button>
+<button type="button" class="voice-btn" data-voice="nilar">🎙️ Nilar — Female Myanmar (style)</button>
+<button type="button" class="voice-btn" data-voice="gemini">✨ Gemini AI voice (Kore)</button>
+</div>
+<p id="voiceInfo" class="small">Voice: Thiha-style (Gemini male voice). Needs a Gemini key for auto voice; without a key, use original video audio.</p>
+<label>Narration speed <span id="voiceSpeedVal" class="slider-val">+25%</span>
+<input type="range" id="voiceSpeed" value="25" min="-50" max="100" step="5"></label>
+<p class="small">Default +25% (faster narration). Speed changes narration timing and the video is re-timed to match, so subtitles stay in sync.</p>
+<label>Pitch (semitones) <span id="voicePitchVal" class="slider-val">0</span>
+<input type="range" id="voicePitch" value="0" min="-12" max="12" step="1"></label>
+<p class="small">Pitch is applied in-browser as a playback-rate change for narration audio only (Gemini TTS itself has no pitch control), and narration timing is re-synced, so it does not break subtitle timing. Original-audio mode ignores pitch.</p>
 <label>Video speed
 <select id="speed"><option value="1">1.0×</option><option value="1.25">1.25×</option></select></label>
 <label>Audio mode
@@ -100,6 +130,12 @@
 <details><summary>ℹ️ Details — audio &amp; speed</summary>
 <p class="small">Audio modes use MediaRecorder (canvas video + Web Audio track); they may be slower and less frame-accurate than WebCodecs. Sound may play aloud during an audio-mode render — lower the speaker volume (capture is internal, so it does not mute the recording). If the output is still silent, report the log line "Audio track:". Speed uses the browser playback rate, so it is approximate; the final summary reports the actual output duration.</p>
 </details>
+</div>
+</div>
+<div id="tab-captions" class="tab-panel">
+<div class="box">
+<h2>Captions &amp; blur — font, colour, blur</h2>
+<p class="small">Font, colour, blur and caption layout. Check the Preview in the Video tab after changing anything, then tap ▶ Start render in the bottom bar. Defaults below honour the example-video style: white text, black outline, one line at a time, middle-lower — yellow is one tap away in the swatches.</p>
 
 <h3>Blur box (bot defaults)</h3>
 <label><input type="checkbox" id="blurOn"> Blur box ON (default in this prototype: ON, so you can see it; bot default is OFF)</label>
@@ -117,28 +153,65 @@
 
 <h3>Subtitle style (DeepClip style)</h3>
 <label>Text colour
-<select id="textColor"><option value="#FFFF00">Yellow</option><option value="#FFFFFF" selected>White (example-video style)</option><option value="#00FFFF">Cyan</option><option value="#FF69B4">Pink</option><option value="#00FF00">Green</option><option value="#FFA500">Orange</option></select></label>
+<select id="textColor"><option value="#FFFF00">Yellow</option><option value="#FFFFFF" selected>White (example-video style)</option><option value="#00FFFF">Cyan</option><option value="#FF69B4">Pink</option><option value="#00FF00">Green</option><option value="#FFA500">Orange</option></select></label><div class="swatches"><button type="button" class="swatch" data-color="#FFFFFF" style="background:#FFFFFF" title="White">White</button><button type="button" class="swatch" data-color="#FFFF00" style="background:#FFFF00;color:#000" title="Yellow">Yellow</button><button type="button" class="swatch" data-color="#00FFFF" style="background:#00FFFF;color:#000" title="Cyan">Cyan</button><button type="button" class="swatch" data-color="#FF69B4" style="background:#FF69B4" title="Pink">Pink</button><button type="button" class="swatch" data-color="#00FF00" style="background:#00FF00;color:#000" title="Green">Green</button><button type="button" class="swatch" data-color="#FFA500" style="background:#FFA500;color:#000" title="Orange">Orange</button></div>
+<div class="swatches"><button type="button" class="swatch" data-outline="#000000" style="background:#000000" title="Black outline">Black outline</button><button type="button" class="swatch" data-outline="#FFFFFF" style="background:#FFFFFF;color:#000" title="White outline">White outline</button><button type="button" class="swatch" data-outline="#808080" style="background:#808080" title="Grey outline">Grey outline</button></div>
+
 <label>Outline colour
 <select id="outlineColor"><option value="#000000" selected>Black</option><option value="#FFFFFF">White</option></select></label>
 <label>Outline width (px) <span id="outlineWVal" class="slider-val">2</span>
 <input type="range" id="outlineW" value="2" min="1" max="5" step="1"></label>
+<label>Caption font
+<select id="captionFont"><option value="default" selected>Default — Noto Sans Myanmar</option><option value="Myanmar Text">Myanmar Text</option><option value="sans-serif">System sans-serif</option><option value="custom">Custom uploaded font (choose a file below)</option></select></label>
+<label>Custom font file (optional — .ttf / .otf / .woff / .woff2, loaded only in this browser, not uploaded anywhere)
+<input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2"></label>
+<p id="fontInfo" class="small">No custom font loaded. A custom font is a later step if you want a specific Burmese font — no font file is bundled in this page.</p>
+<label><input type="checkbox" id="captionBold"> Bold captions</label>
+<label><input type="checkbox" id="captionBox"> Box (dark background behind captions)</label>
 <label>Font size — လက်နဲ့ ဆွဲချိန်ပါ (preview မှာ ချက်ချင်း ပေါ်မယ်, 12–28) <span id="fontSizeVal" class="slider-val">15</span>
 <input type="range" id="fontSize" value="15" min="12" max="28" step="1"></label>
 
 <label>Subtitle position
-<select id="subPos"><option value="Bottom">Bottom</option><option value="Middle">Middle</option><option value="Custom" selected>Custom</option></select></label>
+<select id="subPos"><option value="Bottom">Bottom</option><option value="Middle">Middle</option><option value="Custom" selected>Custom</option></select></label><div class="swatches"><button type="button" class="pos-btn" data-pos="Bottom">Bottom</button><button type="button" class="pos-btn" data-pos="Middle">Middle</button><button type="button" class="pos-btn" data-pos="Custom">Custom</button></div>
+
 <label>Custom vertical position % (used only when position = Custom)
-<span id="subYVal" class="slider-val">67</span>
-<input type="range" id="subY" value="67" min="0" max="95" step="1"></label>
+<span id="subYVal" class="slider-val">69</span>
+<input type="range" id="subY" value="69" min="0" max="95" step="1"></label>
 <label>Caption width % <span id="capWVal" class="slider-val">88</span>
 <input type="range" id="capW" value="88" min="50" max="100" step="1"></label>
+<h3>Caption lines</h3>
+<p class="small">Chars is the main line-length control (40), Words is secondary — whichever fills first cuts the line, so one visual row is kept. Default Words here is 8 (as in the tabbed format you showed); the 40-char cap still cuts first for long Burmese words.</p>
+<label>Chars per cue line <span id="capCharsVal" class="slider-val">40</span>
+<input type="range" id="capChars" value="40" min="20" max="80" step="5"></label>
+<label>Words per cue line <span id="capWordsVal" class="slider-val">8</span>
+<input type="range" id="capWords" value="8" min="3" max="12" step="1"></label>
+</div>
+</div>
+<div id="tab-extras" class="tab-panel">
+<div class="box">
+<h2>1. Gemini API key — FIRST (your own key only)</h2>
+<p class="small">Enter your OWN free AI Studio key here once. It is stored ONLY in this phone browser's localStorage, sent ONLY directly from this browser to Google's Gemini API, never to the assistant, never to any VM. Delete it any time with the button below. Without a key, Start Processing cannot do auto script/voice — use the Manual / advanced path at the bottom instead.</p>
+<label>Gemini API key (password field)
+<input type="password" id="geminiKey" placeholder="Paste your own AI Studio key here"></label>
+<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="display:block;text-align:center;padding:12px;margin:8px 0;background:#1a73e8;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;">🔑 API key ယူရန် — AI Studio ကို ဖွင့်မယ် (တခါနှိပ်ရုံ)</a>
+<p class="small">AI Studio မှာ Get API key / Create API key ကို နှိပ်ပြီး ရတဲ့ key ကို Copy လုပ်ပြီး ဒီ box ထဲမှာ Paste လုပ်ပါ, ပြီးရင် 💾 Save ကို နှိပ်ပါ။ Key ကို ဒီ chat မှာ ဘယ်တော့မှ မပို့ပါနဲ့။</p>
+<button id="saveKeyBtn">💾 Save key on this phone only</button>
+<button id="delKeyBtn">🗑️ Delete key from this phone</button>
+<p id="keyInfo" class="small">No key saved.</p>
+</div>
+<div class="box">
+<h2>Processing steps — live progress (real stages, not faked)</h2>
+<ol id="stepProgress">
+<li id="stepTranscribe">1. Transcribe — <span class="step-pct">0%</span> <span class="step-label"></span></li>
+<li id="stepScript">2. Myanmar script — <span class="step-pct">0%</span> <span class="step-label"></span></li>
+<li id="stepTts">3. TTS voice — <span class="step-pct">0%</span> <span class="step-label"></span></li>
+<li id="stepRender">4. Video Render (phone CPU) — <span class="step-pct">0%</span> <span class="step-label"></span></li>
+</ol>
+<p id="autoProgress">Not started — enter your key (Extras), choose a video (Video), adjust voice/captions, then tap ▶ Start render in the bottom bar.</p>
+<p id="autoSummary" class="small"></p>
 </div>
 <div class="box">
 <h2>4. Start Processing — ONE TAP</h2>
 <p class="small">Tap once and the tool does the rest by itself, in order: (1) transcribe the video audio, (2) make a natural Burmese recap script, (3) generate Gemini narration voice, (4) render on this phone CPU only → download MP4. No manual script paste, no Auto-split tap, no TTS tap, no Start render tap needed in this main path. Keep this page open and on screen until the download link appears.</p>
-<button id="startProcessingBtn">▶ Start Processing — auto transcript → script → voice → render</button>
-<p id="autoProgress">Not started — enter your key (step 1), choose a video (step 2), adjust font/colour/blur (step 3), then tap Start Processing.</p>
-<p id="autoSummary" class="small"></p>
 </div>
 <details id="manualDetails">
 <summary><b>Manual / advanced (optional — collapsed)</b> — paste your own script, upload your own narration, or use the old step-by-step render. The main flow above does not need this.</summary>
@@ -146,10 +219,6 @@
 <h2>Manual: Narration script (Burmese, Unicode — you review/edit before render)</h2>
 <label>Narration script — type or paste the full Burmese narration here (Unicode, never Zawgyi)
 <textarea id="scriptText" rows="6">ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်</textarea></label>
-<label>Chars per cue line <span id="capCharsVal" class="slider-val">40</span>
-<input type="range" id="capChars" value="40" min="20" max="80" step="5"></label>
-<label>Words per cue line <span id="capWordsVal" class="slider-val">4</span>
-<input type="range" id="capWords" value="4" min="3" max="12" step="1"></label>
 <details><summary>ℹ️ Details — splitting rule</summary>
 <p class="small">Split by sentence/phrase first (။ ? !), then by words — whichever fills first cuts the cue: 40 chars OR 4 words. Chars is the main control, Words is secondary.</p>
 </details>
@@ -194,6 +263,8 @@
 </div>
 </details>
 
+</div>
+<div class="bottombar"><span id="bottomVideoName" class="vidname">No video chosen yet — go to Video tab and choose a file.</span><button id="startProcessingBtn">▶ Start render</button></div>
 <h2>Log</h2>
 <pre id="log"></pre>
 <p class="small footer">Oneclickrecap — Phone Render Tool · Static, phone-only — runs entirely in this phone's browser, no server, no upload.</p>
@@ -306,7 +377,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v14-get-key, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v15-tabbed, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -355,7 +426,7 @@ function drawSubtitle(ctx, cw, ch){
   // Non-package prototype mode keeps its whole-clip sample text.
   var text=currentSubtitleLine(elapsedSec).trim(); if(!text) return;
   var sizePx=Math.round(parseFloat($("fontSize").value)*ch/360);
-  ctx.font = sizePx + 'px "Noto Sans Myanmar", "Myanmar Text", sans-serif';
+  ctx.font = (($("captionBold") && $("captionBold").checked) ? "700 " : "") + sizePx + "px " + captionFontFamily();
   ctx.textAlign="center"; ctx.textBaseline="top";
   var maxW=cw*parseFloat($("capW").value)/100;
   // Timed mode: the chunk is already capped (phrase + 40 chars) to fit
@@ -372,7 +443,7 @@ function drawSubtitle(ctx, cw, ch){
     var b=blurBox(cw,ch); var above=b.y- lines.length*lineH - 10; if (above < top) top=Math.max(0, above);
   }
   ctx.lineWidth=parseInt($("outlineW").value,10); ctx.strokeStyle=$("outlineColor").value; ctx.fillStyle=$("textColor").value;
-  lines.forEach(function(ln,i){ var y=top+i*lineH; ctx.strokeText(ln, cw/2, y); ctx.fillText(ln, cw/2, y); });
+  lines.forEach(function(ln,i){ var y=top+i*lineH; if ($("captionBox") && $("captionBox").checked){ var tw=ctx.measureText(ln).width; ctx.save(); ctx.fillStyle="rgba(0,0,0,0.55)"; ctx.fillRect(cw/2-tw/2-8, y-4, tw+16, lineH+4); ctx.restore(); } ctx.strokeText(ln, cw/2, y); ctx.fillText(ln, cw/2, y); });
 }
 function drawFrame(ctx, video, cw, ch, blurCanvas, blurCtx){
   // Draw source: Original = fit (no bars, aspect preserved by canvas size); 9:16 = cover crop.
@@ -800,7 +871,7 @@ function loadVideoFile(file, alreadyConverted){
     hideHevcConvert();
     srcDuration=v.duration; srcW=v.videoWidth; srcH=v.videoHeight;
     $("srcInfo").textContent="File: "+srcFile.name+" — "+srcW+"×"+srcH+", "+srcDuration.toFixed(1)+"s. Long or short, it renders in one go — Preview above shows the first frame.";
-    log("Loaded: "+srcW+"×"+srcH+", duration "+srcDuration.toFixed(2)+"s");
+    log("Loaded: "+srcW+"×"+srcH+", duration "+srcDuration.toFixed(2)+"s"); updateBottomVideo();
     if (!segments.length){ segments=[{text:$("scriptText").value.trim() || "ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်"}]; }
     computeTimedSegments(srcDuration); renderSegmentsText();
     // Preview first frame
@@ -819,7 +890,7 @@ function loadVideoFile(file, alreadyConverted){
   v.src=URL.createObjectURL(srcFile);
 }
 $("fileInput").addEventListener("change", function(){
-  loadVideoFile(this.files[0], false);
+  loadVideoFile(this.files[0], false); updateBottomVideo();
 });
 // Subtitle bounding box (same layout as drawSubtitle) — used for hand-dragging the subtitle on the preview.
 // In package mode the box is sized for the current ONE line-chunk, not the whole segment text.
@@ -827,7 +898,7 @@ function subtitleBox(cw, ch){
   var text=currentSubtitleLine(0).trim(); if(!text) return null;
   var tmp=document.createElement("canvas").getContext("2d");
   var sizePx=Math.round(parseFloat($("fontSize").value)*ch/360);
-  tmp.font = sizePx + 'px "Noto Sans Myanmar", "Myanmar Text", sans-serif';
+  tmp.font = (($("captionBold") && $("captionBold").checked) ? "700 " : "") + sizePx + "px " + captionFontFamily();
   var maxW=cw*parseFloat($("capW").value)/100;
   var lines=[text];
   var lineH=Math.round(sizePx*1.4);
@@ -1004,7 +1075,7 @@ $("geminiTtsBtn").addEventListener("click", async function(){
     for (var ci=0;ci<chunks.length;ci++){
       log("TTS chunk "+(ci+1)+"/"+chunks.length+" ("+chunks[ci].length+" chars)...");
       var j=await geminiGenerate("gemini-2.5-flash-preview-tts", {contents:[{parts:[{text:chunks[ci]}]}],
-        generationConfig:{responseModalities:["AUDIO"], speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:"Kore"}}}}});
+        generationConfig:{responseModalities:["AUDIO"], speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:geminiVoiceName()}}}}});
       var part=null; try{ part=j.candidates[0].content.parts[0]; }catch(e){}
       if (!part || !part.inlineData || !part.inlineData.data) throw new Error("TTS chunk "+(ci+1)+" returned no audio (empty inlineData).");
       var mime=(part.inlineData.mimeType||"").toLowerCase();
@@ -1018,7 +1089,7 @@ $("geminiTtsBtn").addEventListener("click", async function(){
     var blob=new Blob([wav], {type:"audio/wav"});
     var url=URL.createObjectURL(blob);
     var na=$("narrAudio"); na.src=url; narrSrcKind="gemini";
-    na.onloadedmetadata=function(){ narrDur=na.duration; $("ttsInfo").textContent="Gemini TTS ready: "+narrDur.toFixed(1)+"s, "+chunks.length+" chunk(s), voice Kore. Set Audio mode to Gemini TTS narration, then Start render."; log("Gemini TTS ready: "+narrDur.toFixed(1)+"s."); };
+    na.onloadedmetadata=function(){ narrDur=na.duration; $("ttsInfo").textContent="Gemini TTS ready: "+narrDur.toFixed(1)+"s, "+chunks.length+" chunk(s), voice "+geminiVoiceName()+". Set Audio mode to Gemini TTS narration, then Start render."; log("Gemini TTS ready: "+narrDur.toFixed(1)+"s."); };
     $("audioMode").value="gemini"; updateAudioNote();
     alert("Gemini TTS ရပြီ ("+chunks.length+" chunk) — Audio mode ကို Gemini TTS လို့ ထားပြီးပါပြီ, Start render နှိပ်ပါ။");
   }catch(e){
@@ -1106,9 +1177,9 @@ async function autoGenerateTts(script){
   if (cur) chunks.push(cur);
   var allPcm=[];
   for (var ci=0;ci<chunks.length;ci++){
-    log("AUTO TTS chunk "+(ci+1)+"/"+chunks.length+" ("+chunks[ci].length+" chars)...");
+    log("AUTO TTS chunk "+(ci+1)+"/"+chunks.length+" ("+chunks[ci].length+" chars)..."); setStepProgress("stepTts", Math.round((ci)/chunks.length*100), "chunk "+(ci+1)+"/"+chunks.length);
     var j=await geminiGenerate("gemini-2.5-flash-preview-tts", {contents:[{parts:[{text:chunks[ci]}]}],
-      generationConfig:{responseModalities:["AUDIO"], speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:"Kore"}}}}});
+      generationConfig:{responseModalities:["AUDIO"], speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:geminiVoiceName()}}}}});
     var part=null; try{ part=j.candidates[0].content.parts[0]; }catch(e){}
     if (!part || !part.inlineData || !part.inlineData.data) throw new Error("TTS chunk "+(ci+1)+" returned no audio");
     var mime=(part.inlineData.mimeType||"").toLowerCase();
@@ -1127,11 +1198,77 @@ async function autoGenerateTts(script){
     na.onloadedmetadata=function(){ narrDur=na.duration; finish(); };
     setTimeout(finish, 5000);
   });
-  $("ttsInfo").textContent="Gemini TTS ready (auto): "+(narrDur?narrDur.toFixed(1):"?")+"s, "+chunks.length+" chunk(s), voice Kore.";
+  $("ttsInfo").textContent="Gemini TTS ready (auto): "+(narrDur?narrDur.toFixed(1):"?")+"s, "+chunks.length+" chunk(s), voice "+geminiVoiceName()+"." ;
   $("audioMode").value="gemini"; updateAudioNote();
-  log("AUTO TTS ready: "+chunks.length+" chunk(s).");
+  log("AUTO TTS ready: "+chunks.length+" chunk(s)."); setStepProgress("stepTts", 100, "done");
   return true;
 }
+
+/* v15 tabbed UI: tab switch, voice, font, step progress — engine unchanged */
+function showTab(name){
+  document.querySelectorAll(".tab-panel").forEach(function(p){ p.classList.remove("active"); });
+  document.querySelectorAll(".tab-btn").forEach(function(b){ b.classList.toggle("active", b.getAttribute("data-tab")===name); });
+  var p=$("tab-"+name); if (p) p.classList.add("active");
+}
+document.querySelectorAll(".tab-btn").forEach(function(b){ b.addEventListener("click", function(){ showTab(b.getAttribute("data-tab")); }); });
+var voiceChoice="thiha";
+function geminiVoiceName(){
+  if (voiceChoice==="nilar") return "Leda";
+  if (voiceChoice==="gemini") return "Kore";
+  return "Charon";
+}
+function voiceSpeedFactor(){ var el=$("voiceSpeed"); return el ? (1+parseFloat(el.value)/100) : 1.25; }
+function voicePitchFactor(){ var el=$("voicePitch"); return el ? Math.pow(2, parseFloat(el.value)/12) : 1; }
+function voiceFactor(){ return voiceSpeedFactor()*voicePitchFactor(); }
+document.querySelectorAll(".voice-btn").forEach(function(b){ b.addEventListener("click", function(){
+  voiceChoice=b.getAttribute("data-voice");
+  document.querySelectorAll(".voice-btn").forEach(function(x){ x.classList.toggle("active", x===b); });
+  $("voiceInfo").textContent="Voice: "+(voiceChoice==="thiha"?"Thiha-style (Gemini male voice)":voiceChoice==="nilar"?"Nilar-style (Gemini female voice)":"Gemini AI voice (Kore)")+". Needs a Gemini key for auto voice; without a key, use original video audio.";
+}); });
+document.querySelectorAll(".swatch[data-color]").forEach(function(b){ b.addEventListener("click", function(){ $("textColor").value=b.getAttribute("data-color"); redrawPreview(); }); });
+document.querySelectorAll(".swatch[data-outline]").forEach(function(b){ b.addEventListener("click", function(){ $("outlineColor").value=b.getAttribute("data-outline"); redrawPreview(); }); });
+document.querySelectorAll(".pos-btn").forEach(function(b){ b.addEventListener("click", function(){ $("subPos").value=b.getAttribute("data-pos"); redrawPreview(); }); });
+var voiceSpeedEl=$("voiceSpeed"); if (voiceSpeedEl) voiceSpeedEl.addEventListener("input", function(){ $("voiceSpeedVal").textContent=(parseFloat(voiceSpeedEl.value)>=0?"+":"")+voiceSpeedEl.value+"%"; });
+var voicePitchEl=$("voicePitch"); if (voicePitchEl) voicePitchEl.addEventListener("input", function(){ $("voicePitchVal").textContent=voicePitchEl.value; });
+function setStepProgress(stepId, pct, label){
+  var li=$(stepId); if (!li) return;
+  var pctEl=li.querySelector(".step-pct"); if (pctEl) pctEl.textContent=pct+"%";
+  var lab=li.querySelector(".step-label"); if (lab && label) lab.textContent=label;
+}
+function updateBottomVideo(){
+  var el=$("bottomVideoName"); if (!el) return;
+  if (srcFile) el.textContent="Video: "+srcFile.name+((srcW&&srcH)?" — "+srcW+"×"+srcH:"")+((srcDuration)?" — "+srcDuration.toFixed(1)+"s":"");
+  else el.textContent="No video chosen yet — go to Video tab and choose a file.";
+}
+var dropZone=$("dropZone");
+if (dropZone){
+  dropZone.addEventListener("dragover", function(ev){ ev.preventDefault(); dropZone.classList.add("over"); });
+  dropZone.addEventListener("dragleave", function(){ dropZone.classList.remove("over"); });
+  dropZone.addEventListener("drop", function(ev){ ev.preventDefault(); dropZone.classList.remove("over"); if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]) loadVideoFile(ev.dataTransfer.files[0], false); });
+}
+var customFontFamily="";
+function captionFontFamily(){
+  var sel=$("captionFont"); if (!sel) return '"Noto Sans Myanmar", "Myanmar Text", sans-serif';
+  if (sel.value==="custom" && customFontFamily) return '"'+customFontFamily+'", "Noto Sans Myanmar", sans-serif';
+  if (sel.value==="Myanmar Text") return '"Myanmar Text", "Noto Sans Myanmar", sans-serif';
+  if (sel.value==="sans-serif") return 'sans-serif';
+  return '"Noto Sans Myanmar", "Myanmar Text", sans-serif';
+}
+var fontFileEl=$("fontFile");
+if (fontFileEl) fontFileEl.addEventListener("change", async function(){
+  var f=this.files && this.files[0]; if (!f) return;
+  try{
+    var buf=await f.arrayBuffer();
+    var fam="CustomCaptionFont";
+    var ff=new FontFace(fam, buf); await ff.load(); document.fonts.add(ff);
+    customFontFamily=fam; $("captionFont").value="custom";
+    $("fontInfo").textContent="Custom font loaded in this browser only: "+f.name+" — it is not uploaded anywhere.";
+    redrawPreview();
+  }catch(e){ $("fontInfo").textContent="Custom font failed to load: "+e.message; }
+});
+var captionFontEl=$("captionFont"); if (captionFontEl) captionFontEl.addEventListener("change", function(){ redrawPreview(); });
+var captionBoldEl=$("captionBold"); if (captionBoldEl) captionBoldEl.addEventListener("change", function(){ redrawPreview(); });
+var captionBoxEl=$("captionBox"); if (captionBoxEl) captionBoxEl.addEventListener("change", function(){ redrawPreview(); });
 $("startProcessingBtn").addEventListener("click", async function(){
   if (running){ autoSetProgress("Render already running — please wait for it to finish."); return; }
   if (hevcConverting){ autoSetProgress("Convert still running — please wait for it to finish, then tap Start Processing again."); return; }
@@ -1149,21 +1286,21 @@ $("startProcessingBtn").addEventListener("click", async function(){
     var hasManualScript = existingScript && existingScript !== defaultPlaceholder && existingScript.length >= 20;
     if (hasManualScript){
       autoSetProgress("Step 1/3: Manual script found in the script box — using it (skipping transcription/script generation)…");
-      log("AUTO: using manual script from script box ("+existingScript.length+" chars), skipping transcription.");
+      log("AUTO: using manual script from script box ("+existingScript.length+" chars), skipping transcription."); setStepProgress("stepTranscribe", 100, "manual script"); setStepProgress("stepScript", 100, "manual script");
     } else {
-      autoSetProgress("Step 1/3: Transcribing video audio with Gemini (your key, in-browser audio extraction)… please wait, page ကို ဖွင့်ထားပါ။");
+      setStepProgress("stepTranscribe", 0, "transcribing…"); autoSetProgress("Step 1/3: Transcribing video audio with Gemini (your key, in-browser audio extraction)… please wait, page ကို ဖွင့်ထားပါ။");
       var transcript=await autoTranscribeWithGemini();
-      log("AUTO transcript received ("+transcript.length+" chars).");
-      autoSetProgress("Step 2/3: Making a natural Burmese recap script from the transcript with Gemini…");
+      log("AUTO transcript received ("+transcript.length+" chars)."); setStepProgress("stepTranscribe", 100, "done");
+      setStepProgress("stepScript", 0, "writing…"); autoSetProgress("Step 2/3: Making a natural Burmese recap script from the transcript with Gemini…");
       var prompt="Write a natural, spoken Burmese movie-recap narration script from the transcript below. Spoken Burmese only, no stage directions, no English, one flowing narration. Keep it concise and faithful to the transcript — do not invent plot points.\n\nTranscript:\n"+transcript;
       var sj=await geminiGenerate("gemini-2.5-flash", {contents:[{parts:[{text:prompt}]}]});
       var scriptOut=geminiTextOf(sj);
       if (!scriptOut) throw new Error("Gemini returned no script (empty candidates)");
       $("scriptText").value=scriptOut;
-      log("AUTO script received ("+scriptOut.length+" chars) — put into the script box (you can still edit it in the Manual path before any re-render).");
+      log("AUTO script received ("+scriptOut.length+" chars) — put into the script box (you can still edit it in the Manual path before any re-render)."); setStepProgress("stepScript", 100, "done");
     }
     autoSplitSegments();
-    autoSetProgress("Step 3/3: Generating Gemini narration voice (Kore)…");
+    setStepProgress("stepTts", 0, "generating…"); autoSetProgress("Step 3/3: Generating Gemini narration voice ("+geminiVoiceName()+")…");
     try{
       await autoGenerateTts($("scriptText").value.trim());
     }catch(e){
@@ -1173,10 +1310,11 @@ $("startProcessingBtn").addEventListener("click", async function(){
     }
     autoSetProgress("Step 4/4: Rendering on this phone CPU only… progress below, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ။");
     // Mirror the render progress into the single auto progress line.
+    setStepProgress("stepRender", 0, "rendering…");
     var mirror=setInterval(function(){
-      var p=$("progress"); if (p && p.textContent) $("autoProgress").textContent="Rendering (phone CPU): "+p.textContent;
+      var p=$("progress"); if (p && p.textContent){ $("autoProgress").textContent="Rendering (phone CPU): "+p.textContent; var mm=p.textContent.match(/(\d+)%/); if (mm) setStepProgress("stepRender", parseInt(mm[1],10), "rendering…"); }
       var dl=$("downloadLink");
-      if (dl && dl.style.display!=="none"){ clearInterval(mirror); $("autoProgress").textContent="Done — download link is below (Manual: Render section): "+dl.textContent; $("autoSummary").textContent=$("summary").textContent||""; }
+      if (dl && dl.style.display!=="none"){ clearInterval(mirror); setStepProgress("stepRender", 100, "done"); $("autoProgress").textContent="Done — download link is below (Manual: Render section): "+dl.textContent; $("autoSummary").textContent=$("summary").textContent||""; }
       if (!running && dl && dl.style.display==="none"){ /* render finished without a link (error) — stop mirroring */ clearInterval(mirror); }
     }, 1000);
     $("renderBtn").click();
@@ -1185,7 +1323,7 @@ $("startProcessingBtn").addEventListener("click", async function(){
     // Never fake it — open the Manual path and stop the chain.
     log("AUTO CHAIN STOPPED: "+(e && e.message ? e.message : e));
     autoSetProgress("Auto-transcription / script မရဘူး: "+(e && e.message ? e.message : e)+" — အဲဒါကို အတုမလုပ်ပေးဘူး။ Manual / advanced path ကို ဖွင့်ထားပြီ: အဲဒီမှာ script ကို paste လုပ်ပြီး Start Processing ကို ပြန်နှိပ်ပါ (paste လုပ်ထားတဲ့ script ကို သုံးပြီး voice + render အလိုအလျောက် ဆက်လုပ်မယ်), ဒါမှမဟုတ် old Start render ကို တိုက်ရိုက် နှိပ်ပါ။");
-    try{ var md=$("manualDetails"); if (md) md.open=true; }catch(err){}
+    try{ var md=$("manualDetails"); if (md) md.open=true; showTab("extras"); }catch(err){}
   }
 });
 
@@ -1206,8 +1344,8 @@ $("renderBtn").addEventListener("click", async function(){
   // clock drives subtitles; video speed = videoDur / narrDur (clamped).
   var _naDur = narrDur>0 ? narrDur : (isFinite($("narrAudio").duration) && $("narrAudio").duration>0 ? $("narrAudio").duration : 0);
   var audioMode=$("audioMode").value;
-  var narrClockDur = (_naDur>0 && (audioMode==="gemini" || audioMode==="uploaded")) ? _naDur : 0;
-  var renderSpeed = narrClockDur ? Math.max(0.5, Math.min(2.5, srcDuration/narrClockDur)) : parseFloat($("speed").value);
+  var narrClockDur = (_naDur>0 && (audioMode==="gemini" || audioMode==="uploaded")) ? _naDur / voiceFactor() : 0;
+  var renderSpeed = narrClockDur ? Math.max(0.5, Math.min(2.5, srcDuration/narrClockDur)) : Math.max(0.5, Math.min(2.5, voiceSpeedFactor()));
   if (narrClockDur) log("Global-speed: video "+srcDuration.toFixed(1)+"s / narration "+narrClockDur.toFixed(1)+"s = "+renderSpeed.toFixed(2)+"x (clamped 0.5-2.5). Subtitles follow the narration clock.");
   if (segments.length) computeTimedSegments(narrClockDur || srcDuration);
   renderSegmentsText();
@@ -1260,7 +1398,7 @@ $("renderBtn").addEventListener("click", async function(){
         try{
           var AC2 = window.AudioContext || window.webkitAudioContext;
           var actx2 = new AC2(); await actx2.resume();
-          var naEl=$("narrAudio"); naEl.playbackRate=1; // narration clock runs at 1x; the VIDEO is sped/slowed instead
+          var naEl=$("narrAudio"); naEl.playbackRate=voiceFactor(); // narration speed/pitch factor; video is re-timed via narrClockDur so subtitles stay in sync
           var srcNode2 = actx2.createMediaElementSource(naEl);
           var destNode2 = actx2.createMediaStreamDestination();
           srcNode2.connect(destNode2);
