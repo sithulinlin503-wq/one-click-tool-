@@ -1203,13 +1203,13 @@ $("renderBtn").addEventListener("click", async function(){
   // Global-speed timing (website-v1 simplification, labelled): narration
   // clock drives subtitles; video speed = videoDur / narrDur (clamped).
   var _naDur = narrDur>0 ? narrDur : (isFinite($("narrAudio").duration) && $("narrAudio").duration>0 ? $("narrAudio").duration : 0);
+  var audioMode=$("audioMode").value;
   var narrClockDur = (_naDur>0 && (audioMode==="gemini" || audioMode==="uploaded")) ? _naDur : 0;
   var renderSpeed = narrClockDur ? Math.max(0.5, Math.min(2.5, srcDuration/narrClockDur)) : parseFloat($("speed").value);
   if (narrClockDur) log("Global-speed: video "+srcDuration.toFixed(1)+"s / narration "+narrClockDur.toFixed(1)+"s = "+renderSpeed.toFixed(2)+"x (clamped 0.5-2.5). Subtitles follow the narration clock.");
   if (segments.length) computeTimedSegments(narrClockDur || srcDuration);
   renderSegmentsText();
   v.playbackRate = renderSpeed;
-  var audioMode=$("audioMode").value;
   log("Audio mode selected: "+audioMode+" (gemini/uploaded/original = MediaRecorder + Web Audio, silent = video-only WebCodecs).");
   v.muted = (audioMode !== "original"); // narration/uploaded modes mute the original so only the narration is heard
   if (audioMode === "original") log("Audio mode: original audio — video element unmuted for capture; lower phone speaker volume if it plays aloud.");
