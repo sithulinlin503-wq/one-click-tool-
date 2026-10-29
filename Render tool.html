@@ -21,7 +21,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Blogspot Tool (phone render)</h1>
-<p class="small"><b>Version: blogspot-v4-mov-mkv, 2026-10-29.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser. MP4, MOV and MKV files are all accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, single-thread core, no CapCut needed) — see section 1.</p>
+<p class="small"><b>Version: blogspot-v5-save-converted, 2026-10-29.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser. MP4, MOV and MKV files are all accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, single-thread core, no CapCut needed) — see section 1.</p>
 <p class="small"><b>Blogspot truth, read first:</b> Blogspot hosts static files only. This page CANNOT download a link (YouTube/TikTok block browser downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server here), and does NOT call any VM (the VM tunnel is blocked). <b>Input is a local video file from this phone.</b> Narration script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only.</p>
 <p id="audioModeNote" class="small"></p>
 <p class="small">Workflow on this page, in order: <b>1</b> choose a local video file → <b>2</b> write/paste Burmese narration, auto-split into timed segments, edit them → <b>3</b> (optional) Gemini script / Gemini TTS with your own key → <b>4</b> choose narration audio (Gemini TTS / uploaded audio / original / silent) → <b>5</b> drag blur + subtitle on the Preview at the top, set font → <b>6</b> Start render → download the MP4. Keep this page open and on screen during render.</p>
@@ -51,6 +51,8 @@ This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee t
 <p id="srcInfo" class="small">No file chosen yet.</p>
 <button id="hevcConvertBtn" style="display:none">🔄 Convert to H.264 MP4 (ဖုန်းထဲမှာပဲ — MP4 / MOV / MKV အားလုံးရ, CapCut မလိုဘူး)</button>
 <p id="hevcInfo" class="small" style="display:none"></p>
+<p><a id="convertedDownloadLink" style="display:none"></a></p>
+<p id="convertedSaveInfo" class="small" style="display:none">Converted once — save this file, and next time choose the saved H.264 file directly, no Convert needed. တခါပြောင်းပြီးရင် ဒီ file ကို သိမ်းထားပါ — နောက်တခါ ဒီ saved H.264 file ကိုပဲ တိုက်ရိုက်ရွေးပါ, Convert ပြန်နှိပ်စရာ မလိုဘူး။ H.264 MP4 files never need Convert at all; Convert is only for HEVC/MOV/MKV files Chrome cannot play.</p>
 </div>
 
 <div class="box">
@@ -254,7 +256,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v4-mov-mkv, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v5-save-converted, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -432,7 +434,17 @@ function applySegmentEdits(){
   renderSegmentsText(); redrawPreview();
   log("Segment edits applied: "+segments.length+" segments.");
 }
-// ---------- Convert support (blogspot-v4-mov-mkv, 2026-10-29) ----------
+// ---------- Convert support (blogspot-v5-save-converted, 2026-10-29) ----------
+// SAVE THE CONVERTED FILE: after a successful conversion, section 1
+// shows a download link for the converted H.264 MP4, so the user
+// converts ONCE and reuses the saved file next time instead of
+// re-tapping Convert on every visit. The download link + its
+// explanation live in their own elements (convertedDownloadLink /
+// convertedSaveInfo) precisely because loadVideoFile's
+// onloadedmetadata hides hevcInfo — putting the save explanation
+// in hevcInfo would make it vanish the moment the converted file
+// loads. Choosing a new original file hides the old save link, so
+// a stale converted file is never offered for a different video.
 // MP4 / MOV / MKV: the picker lists all three, no file is rejected
 // for its MIME type (MOV/MKV often report empty, video/quicktime or
 // video/x-matroska), and ANY file Chrome cannot play in <video> —
@@ -473,7 +485,7 @@ function applySegmentEdits(){
 // is a 200 MB input cap, because input+output live in tab memory
 // and a larger file risks a tab crash. Progress is shown; on any
 // failure the button stays available to retry.
-var hevcConverting=false, hevcFFmpeg=null, hevcFFmpegLoading=null, hevcUtil=null;
+var hevcConverting=false, hevcFFmpeg=null, hevcFFmpegLoading=null, hevcUtil=null, convertedDownloadUrl=null;
 function showHevcConvert(msg){
   $("hevcConvertBtn").style.display="inline-block";
   $("hevcConvertBtn").disabled=false;
@@ -567,10 +579,27 @@ async function convertHevcToH264(){
     if (ret !== 0) throw new Error("ffmpeg exited with code "+ret+" (no output produced).");
     var outData=await ff.readFile("output.mp4");
     var outBlob=new Blob([outData], {type:"video/mp4"});
-    var outName=srcFile.name.replace(/\.[^.]+$/, "")+"-h264.mp4";
+    // Sanitised output name: strip the original extension, drop
+    // characters Android/Chrome download cannot use in a filename,
+    // then add -h264.mp4 (e.g. "my video.mov" -> "my video-h264.mp4").
+    var outName=srcFile.name.replace(/\.[^.]+$/, "").replace(/[\\\/:*?"<>|]/g, "_").trim() || "converted";
+    outName+="-h264.mp4";
     try{ await ff.deleteFile(inName); await ff.deleteFile("output.mp4"); }catch(e){}
-    log("Convert done: "+outBlob.size+" bytes -> "+outName+" — feeding converted file back into the normal load pipeline.");
-    $("hevcInfo").textContent="ပြောင်းပြီးပြီ — converted file ကို load လုပ်နေတယ်…";
+    log("Convert done: "+outBlob.size+" bytes -> "+outName+" — feeding converted file back into the normal load pipeline, and offering it as a download so it only ever needs converting once.");
+    // Save-the-converted-file: blob URL + <a download> saves to
+    // Downloads on Android Chrome. This link is shown BEFORE
+    // loadVideoFile() on purpose: loadVideoFile hides hevcInfo on
+    // metadata load, but it must NOT hide this link or its
+    // explanation (they live in separate elements, see header).
+    if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} }
+    convertedDownloadUrl=URL.createObjectURL(outBlob);
+    var saveLink=$("convertedDownloadLink");
+    saveLink.href=convertedDownloadUrl;
+    saveLink.download=outName;
+    saveLink.textContent="⬇️ Save converted H.264 file: "+outName+" (convert once, reuse it — next time choose this saved file, no Convert needed)";
+    saveLink.style.display="block";
+    $("convertedSaveInfo").style.display="block";
+    $("hevcInfo").textContent="ပြောင်းပြီးပြီ — converted file ကို load လုပ်နေတယ်… အပေါ်က ⬇️ Save link ကို နှိပ်ပြီး converted file ကို သိမ်းထားပါ — နောက်တခါ ဒီ saved H.264 file ကိုပဲ တိုက်ရိုက်ရွေးပါ, Convert ပြန်နှိပ်စရာ မလိုဘူး။ H.264 MP4 files never need Convert at all; Convert is only for HEVC/MOV/MKV files Chrome cannot play.";
     loadVideoFile(new File([outBlob], outName, {type:"video/mp4"}), true);
   }catch(e){
     log("Convert FAILED: "+(e && e.message ? e.message : e));
@@ -583,6 +612,16 @@ async function convertHevcToH264(){
 $("hevcConvertBtn").addEventListener("click", convertHevcToH264);
 function loadVideoFile(file, alreadyConverted){
   srcFile=file; if(!srcFile) return;
+  // A new original file makes any previous converted download
+  // stale — hide it (and drop its blob URL) so it is never
+  // offered for a different video. The converted-file load path
+  // (alreadyConverted=true) must NOT hide it: the save link is
+  // set just before that call and must survive the load.
+  if (!alreadyConverted){
+    $("convertedDownloadLink").style.display="none";
+    $("convertedSaveInfo").style.display="none";
+    if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} convertedDownloadUrl=null; }
+  }
   // NEVER reject on MIME type: MOV/MKV files often report an
   // empty type, video/quicktime or video/x-matroska, and Android
   // pickers may report nothing at all — attempt the load anyway
