@@ -563,7 +563,7 @@ async function loadHevcWasm(){
     var ff=new ffmpegMod.FFmpeg();
     ff.on("progress", function(p){
       var pct=(p && isFinite(p.progress)) ? Math.round(p.progress*100) : 0;
-      $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ — video ရှည်ရင် အချိန်ကြာမယ်)";
+      $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ — ultrafast + 720p နဲ့ ပိုမြန်ပေမယ့် video ရှည်ရင် အချိန်ကြာသေးတယ်)";
     });
     ff.on("log", function(l){ if (l && l.message) log("ffmpeg.wasm: "+l.message); });
     // Self-contained class worker (see header comment): fetch the
@@ -614,7 +614,7 @@ async function convertHevcToH264(){
   log("Convert started for "+srcFile.name+" ("+(srcFile.size/1048576).toFixed(1)+" MB, type="+(srcFile.type||"unknown")+") — MP4/MOV/MKV all go through this same path.");
   try{
     var ff=await loadHevcWasm();
-    $("hevcInfo").textContent="ပြောင်းနေတယ်… 0% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့ — video ရှည်ရင် အချိန်ကြာမယ်)";
+    $("hevcInfo").textContent="ပြောင်းနေတယ်… 0% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့ — အခု ultrafast + 720p နဲ့ ပိုမြန်ပေမယ့် video ရှည်ရင် အချိန်ကြာသေးတယ်, instant မဟုတ်ဘူး)";
     var inputData=await hevcUtil.fetchFile(srcFile);
     // Keep the real extension (mov/mkv/mp4/m4v/webm) in the WASM
     // filename so ffmpeg probes the right container — forcing
@@ -625,13 +625,15 @@ async function convertHevcToH264(){
     var inName="input."+inExt;
     await ff.writeFile(inName, inputData);
     // Same args proven natively on generated HEVC, MOV and MKV
-    // samples: H.264 yuv420p, veryfast, crf 23, max width 1280,
-    // faststart, AAC. -map 0:v:0 + 0:a? keeps only the first
+    // samples: H.264 yuv420p, ultrafast, crf 23, max width 720,
+    // faststart, AAC. The final render target is already long
+    // side <=720, so a 720-capped convert intermediate costs no
+    // final quality. -map 0:v:0 + 0:a? keeps only the first
     // video stream and any audio (subtitle/other streams in an
     // MKV are ignored, not burned or copied). Timeout -1 (no
     // cap): a 10-min cap would kill long videos, and the user
     // wants long videos in one go — slow, not capped.
-    var ret=await ff.exec(["-i",inName,"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf","23","-pix_fmt","yuv420p","-vf","scale='min(1280,iw)':-2","-movflags","+faststart","-c:a","aac","-b:a","128k","-threads","1","output.mp4"], -1);
+    var ret=await ff.exec(["-i",inName,"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","23","-pix_fmt","yuv420p","-vf","scale='min(720,iw)':-2","-movflags","+faststart","-c:a","aac","-b:a","128k","-threads","1","output.mp4"], -1);
     if (ret !== 0) throw new Error("ffmpeg exited with code "+ret+" (no output produced).");
     var outDataRaw=await ff.readFile("output.mp4");
     // Converted-output validation (v6 fix): never feed an empty or
