@@ -57,7 +57,7 @@
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v16-fresh-element, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>Version: blogspot-v17-fast-remux, 2026-10-30.</b> Static, phone-only — no server, no upload.</p>
 <p class="small">Tabs: <b>Video</b> → <b>Voice</b> → <b>Captions</b> → <b>Extras</b> (key + steps). Then tap <b>▶ Start render</b> in the bottom bar once — one tap: auto transcript → Burmese script → Gemini voice → phone-CPU render → download MP4.</p>
 <details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
 <p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server) and does NOT call any VM. <b>Input is a local video file from this phone.</b> The new main flow is one tap: Start Processing auto-transcribes the video audio with YOUR OWN Gemini key (no Whisper runs in this browser — transcription is a Gemini audio call from this browser to Google, using only your key), turns it into a natural Burmese script, generates Gemini narration voice, then renders on this phone CPU only. Without a key, Start Processing cannot do the auto script/voice — use the Manual / advanced path below instead (paste a script, upload audio, old Start render). MP4, MOV and MKV are accepted; any file Chrome cannot play is auto-converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see step 2.</p>
@@ -377,7 +377,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v16-fresh-element, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v17-fast-remux, 2026-10-30. Static only — no server, no link download, NO Whisper in-browser. New main flow: 1 key → 2 video → 3 settings → Start Processing (one tap: Gemini audio transcription with YOUR key → Burmese script → Gemini TTS → phone-CPU render). Without a key, Start Processing stops and points to the Manual path — it never renders a silent video as if narrated. MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, the tool auto-converts it in step 2 by itself (no tap needed; Convert button is only a fallback) — in-browser ffmpeg.wasm transcode to smaller 480p H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -620,6 +620,12 @@ function applySegmentEdits(){
 // and a larger file risks a tab crash. Progress is shown; on any
 // failure the button stays available to retry.
 var hevcConverting=false, hevcFFmpeg=null, hevcFFmpegLoading=null, hevcUtil=null, convertedDownloadUrl=null, hevcAutoAttempted=false;
+// v17 fast-remux state: hevcRemuxAttempted = remux tried once for the current
+// original file (reset on a new original choice); hevcRemuxPending = a remuxed
+// file is currently loading — if THAT file errors, fall back to full convert
+// once (see loadVideoFile onerror). hevcOriginalFile keeps the original file
+// so the fallback full convert re-encodes the original, not the remuxed copy.
+var hevcRemuxAttempted=false, hevcRemuxPending=false, hevcOriginalFile=null, hevcRemuxMode=false;
 var HEVC_AUTO_MSG="ဖုန်းမှာ တိုက်ရိုက် ဖွင့်မရလို့ H.264 အဖြစ် အလိုအလျောက် ပြောင်းနေတယ်… (page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ)";
 function showHevcConvert(msg){
   $("hevcConvertBtn").style.display="inline-block";
@@ -642,7 +648,8 @@ async function loadHevcWasm(){
     var ff=new ffmpegMod.FFmpeg();
     ff.on("progress", function(p){
       var pct=(p && isFinite(p.progress)) ? Math.round(p.progress*100) : 0;
-      $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ — ultrafast + 480p သေးတဲ့ file နဲ့ ပိုမြန်အောင် ပြောင်းနေတယ်, ဒီ converted file ကနေ render လုပ်ရင် 480p ထွက်မယ်, 720p မဟုတ်ဘူး)";
+      if (hevcRemuxMode){ $("hevcInfo").textContent="Remux လုပ်နေတယ်… "+pct+"% (re-encode မဟုတ် — codec ကို မထိဘဲ container ပဲ ပြန်စီတာ, စက္ကန့်ပိုင်းပဲ ကြာမယ်, page ကို ဖွင့်ထားပါ)"; }
+      else { $("hevcInfo").textContent="ပြောင်းနေတယ်… "+pct+"% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ — ultrafast + 480p သေးတဲ့ file နဲ့ ပိုမြန်အောင် ပြောင်းနေတယ်, ဒီ converted file ကနေ render လုပ်ရင် 480p ထွက်မယ်, 720p မဟုတ်ဘူး)"; }
     });
     ff.on("log", function(l){ if (l && l.message) log("ffmpeg.wasm: "+l.message); });
     // Self-contained class worker (see header comment): fetch the
@@ -691,6 +698,64 @@ async function convertHevcToH264(autoMode){
   hevcConverting=true; $("hevcConvertBtn").disabled=true;
   $("hevcInfo").textContent=autoMode ? (HEVC_AUTO_MSG+" — ffmpeg.wasm download လုပ်နေတယ်… (ပထမအကြိမ်ပဲ ~30MB, browser cache ထဲမှာ ကျန်မယ်, Wi-Fi ရှိရင် ပိုကောင်း)") : "ffmpeg.wasm download လုပ်နေတယ်… (ပထမအကြိမ်ပဲ ~30MB, browser cache ထဲမှာ ကျန်မယ်, Wi-Fi ရှိရင် ပိုကောင်း — video ရှည်ရင် ပြောင်းတာ ကြာမယ်, page ကို ဖွင့်ထားပါ)";
   log("Convert started for "+srcFile.name+" ("+(srcFile.size/1048576).toFixed(1)+" MB, type="+(srcFile.type||"unknown")+") — MP4/MOV/MKV all go through this same path.");
+  // v17 FAST REMUX (runs before any full re-encode, auto and manual
+  // alike): many files Chrome <video> refuses are ALREADY H.264 —
+  // the refusal is a container/moov quirk, not the codec. Copying
+  // the streams into a fresh faststart MP4 (-c copy, no libx264,
+  // no re-encode) takes seconds even for a long file, and if the
+  // remuxed file loads, the slow full convert never runs at all.
+  // Only if the remuxed file ALSO fails to load does the onerror
+  // handler fall back to the full convert below (skipRemux=true).
+  // A remux failure (ffmpeg error, empty/non-MP4 output) falls
+  // through to the full convert in THIS call, silently — showing
+  // a remux error for an HEVC file would only confuse, since a
+  // full convert is the correct next step for it anyway.
+  var _skipRemux = (arguments.length > 1 && arguments[1] === true);
+  var _isSavedFile = /-(h264|remux)\.mp4$/i.test(srcFile.name);
+  if (!_skipRemux && !_isSavedFile && !hevcRemuxAttempted && !hevcRemuxPending){
+    hevcRemuxAttempted=true; hevcOriginalFile=srcFile; hevcRemuxMode=true;
+    $("hevcInfo").textContent="Remux လုပ်နေတယ်… (H.264 file ဖြစ်နိုင်လို့ re-encode မလုပ်ဘဲ container ပဲ အမြန် ပြန်စီမယ်, စက္ကန့်ပိုင်းပဲ ကြာမယ် — ရရင် Convert အရှည် လုံးဝ မလိုဘူး)";
+    log("v17 remux-first: trying fast copy-remux for "+srcFile.name+" before any full re-encode.");
+    try{
+      var rff=await loadHevcWasm();
+      var rInputData=await hevcUtil.fetchFile(srcFile);
+      var rExtMatch=srcFile.name.match(/\.([A-Za-z0-9]+)$/);
+      var rInExt=rExtMatch ? rExtMatch[1].toLowerCase() : "mp4";
+      if (["mp4","mov","mkv","m4v","webm"].indexOf(rInExt) < 0) rInExt="mp4";
+      var rInName="input."+rInExt;
+      await rff.writeFile(rInName, rInputData);
+      var rRet=await rff.exec(["-i",rInName,"-map","0:v:0","-map","0:a?","-c","copy","-movflags","+faststart","output.mp4"], -1);
+      if (rRet !== 0) throw new Error("remux ffmpeg exited with code "+rRet);
+      var rOutRaw=await rff.readFile("output.mp4");
+      var rOut=rOutRaw.slice ? rOutRaw.slice() : rOutRaw;
+      if (!rOut || !rOut.length) throw new Error("remux output empty");
+      if (rOut.length < 8 || rOut[4]!==0x66 || rOut[5]!==0x74 || rOut[6]!==0x79 || rOut[7]!==0x70) throw new Error("remux output missing ftyp header");
+      var rBlob=new Blob([rOut], {type:"video/mp4"});
+      var rName=srcFile.name.replace(/\.[^.]+$/, "").replace(/[\\\/:*?"<>|]/g, "_").trim() || "remuxed";
+      rName+="-remux.mp4";
+      try{ await rff.deleteFile(rInName); await rff.deleteFile("output.mp4"); }catch(e){}
+      hevcRemuxMode=false;
+      if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} }
+      convertedDownloadUrl=URL.createObjectURL(rBlob);
+      var rSaveLink=$("convertedDownloadLink");
+      rSaveLink.href=convertedDownloadUrl;
+      rSaveLink.download=rName;
+      rSaveLink.textContent="⬇️ Save remuxed file: "+rName+" (re-encode မလုပ်ဘဲ ပြန်စီထားတာ — နောက်တခါ ဒီ file ကိုပဲ တိုက်ရိုက်ရွေးပါ, Convert မလိုဘူး)";
+      rSaveLink.style.display="block";
+      $("convertedSaveInfo").style.display="block";
+      $("hevcInfo").textContent="Remux ပြီးပြီ — remuxed file ကို load လုပ်နေတယ်… အပေါ်က ⬇️ Save link နဲ့ သိမ်းထားပါ။";
+      log("Remux done: "+rBlob.size+" bytes -> "+rName+" — loading it on a fresh <video> element; if it loads, no full convert runs.");
+      hevcRemuxPending=true;
+      hevcConverting=false; $("hevcConvertBtn").disabled=false;
+      loadVideoFile(new File([rBlob], rName, {type:"video/mp4"}), true);
+      return;
+    }catch(re){
+      hevcRemuxMode=false;
+      log("Remux did not produce a usable file ("+(re && re.message ? re.message : re)+") — falling through to the full convert in this same call.");
+      try{ await hevcFFmpeg.deleteFile("output.mp4"); }catch(e){}
+      $("hevcInfo").textContent=autoMode ? (HEVC_AUTO_MSG+" — remux မရလို့ full Convert လုပ်နေတယ်…") : "Remux မရလို့ full Convert လုပ်နေတယ်…";
+    }
+  }
   try{
     var ff=await loadHevcWasm();
     $("hevcInfo").textContent="ပြောင်းနေတယ်… 0% (ဖုန်းထဲမှာပဲ, page ကို ပိတ်မသွားပါနဲ့ — အခု ultrafast + 480p သေးတဲ့ file နဲ့ ကြီး/ရှည်တဲ့ video တွေ ပိုမြန်အောင် ပြောင်းနေတယ်, ဒီ converted file ကနေ render လုပ်ရင် 480p ထွက်မယ်, 720p မဟုတ်ဘူး, instant မဟုတ်ဘူး)";
@@ -771,7 +836,7 @@ function loadVideoFile(file, alreadyConverted){
   // (alreadyConverted=true) must NOT hide it: the save link is
   // set just before that call and must survive the load.
   if (!alreadyConverted){
-    hevcAutoAttempted=false;
+    hevcAutoAttempted=false; hevcRemuxAttempted=false; hevcRemuxPending=false;
     $("convertedDownloadLink").style.display="none";
     $("convertedSaveInfo").style.display="none";
     if (convertedDownloadUrl){ try{ URL.revokeObjectURL(convertedDownloadUrl); }catch(e){} convertedDownloadUrl=null; }
@@ -829,6 +894,20 @@ function loadVideoFile(file, alreadyConverted){
     var errCode="?", errMsg="";
     try{ if (v.error){ errCode=v.error.code; errMsg=v.error.message||""; } }catch(e){}
     if (alreadyConverted){
+      // v17 remux fallback: if the file that just failed IS the
+      // remuxed file, it proved remux is not enough for this
+      // Chrome build — run the full convert ONCE on the ORIGINAL
+      // file (restored from hevcOriginalFile, so the output name
+      // stays clean), instead of leaving the user at a dead end.
+      if (hevcRemuxPending){
+        hevcRemuxPending=false;
+        log("Remuxed file also failed to load in <video> — falling back to the full convert on the original file.");
+        $("hevcInfo").textContent="Remux နဲ့ မရဘူး — full Convert (ultrafast + 480p) လုပ်နေတယ်… page ကို ပိတ်မသွားပါနဲ့, screen ဖွင့်ထားပါ";
+        if (hevcOriginalFile) srcFile=hevcOriginalFile;
+        hevcAutoAttempted=true;
+        convertHevcToH264(true, true);
+        return;
+      }
       // v6 diagnostics (NOT "try another video"): the converted
       // output was already validated as a non-empty MP4 with an
       // ftyp header before it got here, so a load failure here
@@ -858,7 +937,7 @@ function loadVideoFile(file, alreadyConverted){
       // that already loaded (this handler only runs on failure).
       // The 200MB cap is enforced inside convertHevcToH264, which
       // refuses with a plain reason instead of attempting.
-      var isSavedH264 = srcFile && /-h264\.mp4$/i.test(srcFile.name);
+      var isSavedH264 = srcFile && /-(h264|remux)\.mp4$/i.test(srcFile.name);
       // v.src must already be the chosen file's blob URL: this
       // rules out any spurious error from the pre-src reset
       // (removeAttribute+load() before src is attached).
@@ -875,6 +954,7 @@ function loadVideoFile(file, alreadyConverted){
     }
   };
   v.onloadedmetadata=function(){
+    if (hevcRemuxPending){ hevcRemuxPending=false; log("Remuxed file loaded OK — no full convert needed."); }
     hideHevcConvert();
     srcDuration=v.duration; srcW=v.videoWidth; srcH=v.videoHeight;
     $("srcInfo").textContent="File: "+srcFile.name+" — "+srcW+"×"+srcH+", "+srcDuration.toFixed(1)+"s. Long or short, it renders in one go — Preview above shows the first frame.";
