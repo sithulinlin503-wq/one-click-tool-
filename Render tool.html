@@ -31,37 +31,45 @@
   #previewCanvas{touch-action:none;cursor:move;width:100%}
   .small{font-size:13px;color:#cbd5e1}
   .footer{margin-top:20px;text-align:center;color:#94a3b8}
-  summary{font-size:16px;cursor:pointer}
+  summary{font-size:15px;cursor:pointer;color:#00E5FF;font-weight:700}
+  details{border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.03);border-radius:12px;padding:10px 12px;margin:10px 0}
+  details p{margin:8px 0}
+  .hint{font-size:13px;color:#cbd5e1;margin:8px 0}
 </style>
 </head>
 <body>
 <h1>📱 Oneclickrecap — Phone Render Tool</h1>
-<p class="small"><b>Version: blogspot-v7-ui-dark, 2026-10-29.</b> Static HTML/JS only — no server, no VM, no tunnel. Everything below runs in this phone's browser. MP4, MOV and MKV files are all accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, single-thread core, no CapCut needed) — see section 1.</p>
-<p class="small"><b>Blogspot truth, read first:</b> Blogspot hosts static files only. This page CANNOT download a link (YouTube/TikTok block browser downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server here), and does NOT call any VM (the VM tunnel is blocked). <b>Input is a local video file from this phone.</b> Narration script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only.</p>
+<p class="small"><b>Version: blogspot-v8-ui-clean, 2026-10-29.</b> Static, phone-only — no server, no upload.</p>
+<p class="small"><b>1</b> file → <b>2</b> script → <b>3</b> Gemini (optional) → <b>4</b> audio → <b>5</b> Preview → <b>6</b> render → download MP4.</p>
+<details><summary>ℹ️ Details / ရှင်းလင်းချက်</summary>
+<p class="small">This page CANNOT download a link (browsers block YouTube/TikTok downloads, yt-dlp needs a server), CANNOT transcribe audio (no Whisper server), and does NOT call any VM. <b>Input is a local video file from this phone.</b> Script is typed/pasted by you, or generated with YOUR OWN Gemini key (optional, stored only in this browser). Render uses this phone's CPU/encoder only. MP4, MOV and MKV are accepted; any file Chrome cannot play is converted to H.264 MP4 inside this page (ffmpeg.wasm, no CapCut needed) — see section 1.</p>
+</details>
 <p id="audioModeNote" class="small"></p>
-<p class="small">Workflow on this page, in order: <b>1</b> choose a local video file → <b>2</b> write/paste Burmese narration, auto-split into timed segments, edit them → <b>3</b> (optional) Gemini script / Gemini TTS with your own key → <b>4</b> choose narration audio (Gemini TTS / uploaded audio / original / silent) → <b>5</b> drag blur + subtitle on the Preview at the top, set font → <b>6</b> Start render → download the MP4. Keep this page open and on screen during render.</p>
 
 <div class="warn">
-<b>⚠️ Keep this page open and on screen. Do not switch apps or lock the phone.</b><br>
-The browser may throttle or stop the render in the background — exactly like DeepClip warns.
-Start with a <b>short clip (30 seconds or less) first</b>, then try longer ones.<br>
-Battery / heat warning: hardware encoding uses the phone's encoder and will warm the phone.
-This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee the browser keeps rendering if you leave the page.
+<b>⚠️ Keep this page open and on screen during render.</b> Do not switch apps or lock the phone — the browser may stop the render.
+<details><summary>ℹ️ Details</summary>
+<p class="small">Battery / heat: hardware encoding will warm the phone. This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee the browser keeps rendering if you leave the page.</p>
+</details>
 </div>
 
 <div class="box preview-box">
 <h2>Preview — အပေါ်ဆုံး (ချိန်တိုင်း ဒီမှာ ချက်ချင်း မြင်ရမယ်)</h2>
 <canvas id="previewCanvas"></canvas>
-<p class="small"><b>Blur box + စာတန်းကို လက်နဲ့ ဆွဲ၍ ရွှေ့နိုင်တယ်:</b> Preview ပေါ်က blur box ထဲကို ထိပြီး ဆွဲပါ (blur position), box ရဲ့ အောက်ညာထောင့်ကို ဆွဲရင် blur size။ <b>မြန်မာစာတန်း ပေါ်ကို ထိပြီး ဆွဲရင် စာတန်း position ပြောင်းမယ်</b> (အလိုအလျောက် Custom position ဖြစ်သွားမယ်, subY % ပြောင်းမယ်)။ Font အကြီးအသေးကို အောက်က slider နဲ့ လက်နဲ့ ဆွဲချိန်ပါ, preview မှာ ချက်ချင်း ပေါ်မယ်။ ဆွဲပြီးမှ Start render နှိပ်ပါ။ အောက်က setting တွေပြောင်းတိုင်း preview ဒီအပေါ်မှာ ချက်ချင်း ပြောင်းတယ်, scroll ဆင်းကြည့်စရာ မလိုဘူး။</p>
-<p class="small">Preview shows the first frame with blur + subtitle applied, after you choose a file. It does not prove the full render. The red outline on the preview is only a drag guide — it is NOT burned into the rendered video.</p>
+<p class="hint">Blur box / စာတန်းကို လက်နဲ့ ဆွဲ၍ ရွှေ့နိုင်တယ်။ Red outline က guide ပဲ, render မှာ မပါဘူး။</p>
+<details><summary>ℹ️ Details</summary>
+<p class="small">Blur box ထဲကို ထိပြီး ဆွဲပါ (position), အောက်ညာထောင့်ကို ဆွဲရင် size။ စာတန်းပေါ်ကို ထိပြီး ဆွဲရင် position ပြောင်းမယ် (auto Custom, subY % ပြောင်းမယ်)။ Font ကို အောက်က slider နဲ့ ချိန်ပါ, preview မှာ ချက်ချင်း ပေါ်မယ်။ Setting ပြောင်းတိုင်း preview ဒီအပေါ်မှာ ချက်ချင်း ပြောင်းတယ်။ Preview shows the first frame only — it does not prove the full render.</p>
+</details>
 </div>
 
 <div class="box">
 <h2>1. Source video (LOCAL FILE ONLY — link input does NOT work on Blogspot)</h2>
 
-<label>Choose video file — MP4, MOV or MKV (from phone storage — a file you already have, e.g. downloaded via the Telegram bot or another app)
+<label>Choose video file — MP4, MOV or MKV
 <input type="file" id="fileInput" accept="video/*,.mp4,.mov,.mkv,.m4v,.webm"></label>
-<p class="small">MP4, MOV and MKV files are all accepted here. If Chrome cannot play the file you chose (MOV/QuickTime is not supported in Chrome, and MKV support is codec-dependent), the 🔄 Convert button below appears and converts it to H.264 MP4 inside this phone — no rename, no CapCut, no upload anywhere. Link paste does NOT work here: browsers cannot download YouTube/TikTok videos (CORS/DRM), and there is no server to run yt-dlp. If you only have a link, download it first with the Telegram bot, then choose that file here.</p>
+<details><summary>ℹ️ Details</summary>
+<p class="small">If Chrome cannot play your file (MOV/QuickTime is not supported in Chrome; MKV support is codec-dependent), the 🔄 Convert button below converts it to H.264 MP4 inside this phone — no rename, no CapCut, no upload. Link paste does NOT work here (browsers cannot download YouTube/TikTok videos); download a link first with the Telegram bot, then choose that file here.</p>
+</details>
 <video id="srcVideo" controls playsinline muted></video>
 <p id="srcInfo" class="small">No file chosen yet.</p>
 <button id="hevcConvertBtn" style="display:none">🔄 Convert to H.264 MP4 (ဖုန်းထဲမှာပဲ — MP4 / MOV / MKV အားလုံးရ, CapCut မလိုဘူး)</button>
@@ -76,13 +84,17 @@ This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee t
 <textarea id="scriptText" rows="6">ဒီနေရာမှာ စာတန်းထိုး ပေါ်မယ်</textarea></label>
 <label>Chars per cue line <input type="number" id="capChars" value="40" min="20" max="80" step="5"></label>
 <label>Words per cue line <input type="number" id="capWords" value="4" min="3" max="12" step="1"></label>
-<p class="small">Splitting rule (same as the bot): split by sentence/phrase first (။ ? !), then by words — whichever fills first cuts the cue: 40 chars OR 4 words. Chars is the main line-length control, Words is secondary.</p>
+<details><summary>ℹ️ Details — splitting rule</summary>
+<p class="small">Split by sentence/phrase first (။ ? !), then by words — whichever fills first cuts the cue: 40 chars OR 4 words. Chars is the main control, Words is secondary.</p>
+</details>
 <button id="autoSplitBtn">✂️ Auto-split into timed segments</button>
 <p id="segInfo" class="small">No segments yet — press Auto-split after choosing a video (times are distributed over the video duration, proportional to character count).</p>
 <label>Segments (one per line, editable — format: start-end | text). Edit, then press Apply.
 <textarea id="segmentsText" rows="6" placeholder="0.0-4.5 | ကျွန်တော်တို့ အပေါ်ထပ်က"></textarea></label>
 <button id="applySegBtn">✅ Apply segment edits</button>
-<p class="small"><b>Timing is an approximation, not per-segment cuts:</b> segment times are proportional to character count over the narration/video duration (global-speed style). If narration audio is longer than the video, the video plays slower (clamped 0.5–2.5×) so the narration fits — the same simplification as website v1. Subtitles during render follow the segment list, one cue line at a time, never a whole paragraph.</p>
+<details><summary>ℹ️ Details — timing</summary>
+<p class="small"><b>Timing is approximate:</b> segment times are proportional to character count over the video duration. If narration is longer than the video, the video plays slower (clamped 0.5–2.5×) so it fits. Subtitles show one cue line at a time, never a whole paragraph.</p>
+</details>
 </div>
 
 <div class="box">
@@ -109,7 +121,9 @@ This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee t
 <label>Upload narration audio (optional — e.g. a voice recording made on this phone)
 <input type="file" id="audioFile" accept="audio/*"></label>
 <p id="narrInfo" class="small">No narration audio selected. Audio mode in section 5 decides what is used: Gemini TTS / uploaded audio / original video audio / silent.</p>
-<p class="small">Note: one MediaElementSource per audio element per page load — if you already rendered with narration/uploaded audio once on this page, reload the page before rendering with a different narration audio.</p>
+<details><summary>ℹ️ Details</summary>
+<p class="small">One MediaElementSource per audio element per page load — if you already rendered with narration/uploaded audio once, reload the page before rendering with a different narration audio.</p>
+</details>
 </div>
 
 <div class="box">
@@ -120,8 +134,9 @@ This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee t
 <select id="speed"><option value="1">1.0×</option><option value="1.25">1.25×</option></select></label>
 <label>Audio mode
 <select id="audioMode"><option value="original" selected>Original video audio — MediaRecorder, WITH SOUND (works without any key)</option><option value="gemini">Gemini TTS narration — MediaRecorder, narration audio, original muted (needs section 3 TTS first)</option><option value="uploaded">Uploaded audio — MediaRecorder, your uploaded file, original muted (needs section 4 file)</option><option value="silent">Silent — WebCodecs video only, fastest, NO SOUND (proven 0.99×)</option></select></label>
-<p class="small">Audio modes use MediaRecorder with the canvas video track + a Web Audio track (Gemini TTS / uploaded file / original video). It may be slower and less frame-accurate than WebCodecs. During an audio-mode render the sound may play aloud — lower the phone speaker volume (capture is internal, so speaker volume does not mute the recording). If the output is still silent, report the log line "Audio track:" — that tells whether an audio track was found.</p>
-<p class="small">Speed here uses the browser playback rate and presented frames, so it is approximate, not frame-accurate like the server pipeline's per-segment speed change. The final summary reports the actual output duration, so you can see the real effect.</p>
+<details><summary>ℹ️ Details — audio &amp; speed</summary>
+<p class="small">Audio modes use MediaRecorder (canvas video + Web Audio track); they may be slower and less frame-accurate than WebCodecs. Sound may play aloud during an audio-mode render — lower the speaker volume (capture is internal, so it does not mute the recording). If the output is still silent, report the log line "Audio track:". Speed uses the browser playback rate, so it is approximate; the final summary reports the actual output duration.</p>
+</details>
 
 <h3>Blur box (bot defaults)</h3>
 <label><input type="checkbox" id="blurOn"> Blur box ON (default in this prototype: ON, so you can see it; bot default is OFF)</label>
@@ -157,7 +172,9 @@ This page tries to hold a screen wake-lock, but that does <b>not</b> guarantee t
 <p id="progress">Not started.</p>
 <p id="summary" class="small"></p>
 <p><a id="downloadLink" style="display:none">⬇ Download rendered video</a></p>
-<p class="small">Encoder path used will be shown in the log below. If WebCodecs is unavailable, the fallback is MediaRecorder from canvas.captureStream(). The download filename/extension matches the actual container: .mp4 only if the file is actually MP4, otherwise .webm (or .h264 if muxing fails).</p>
+<details><summary>ℹ️ Details</summary>
+<p class="small">Encoder path is shown in the log below. If WebCodecs is unavailable, the fallback is MediaRecorder. The download extension matches the actual container: .mp4 only if actually MP4, otherwise .webm (or .h264 if muxing fails).</p>
+</details>
 </div>
 
 <h2>Log</h2>
@@ -272,7 +289,7 @@ function log(msg){ var el=$("log"); el.textContent += "[" + new Date().toLocaleT
 if (!window.isSecureContext){
   log("WARNING: This page is NOT in a secure context (opened via file:// or content://). WebCodecs requires https — it will report supported=false and fall back to MediaRecorder here. Open the https link version in Chrome to test the WebCodecs path.");
 }
-log("Blogspot tool version: blogspot-v7-ui-dark, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
+log("Blogspot tool version: blogspot-v8-ui-clean, 2026-10-29. Static only — no server, no link download, no Whisper. Audio default = original (WITH SOUND). MP4/MOV/MKV all accepted: if Chrome cannot play the chosen file, tap the Convert button in section 1 — in-browser ffmpeg.wasm transcode to H.264 MP4, no CapCut needed.");
 function updateAudioNote(){
   var m=$("audioMode").value;
   $("audioModeNote").textContent = (m==="original")
@@ -450,7 +467,7 @@ function applySegmentEdits(){
   renderSegmentsText(); redrawPreview();
   log("Segment edits applied: "+segments.length+" segments.");
 }
-// ---------- Convert support (blogspot-v7-ui-dark, 2026-10-29) ----------
+// ---------- Convert support (blogspot-v8-ui-clean, 2026-10-29) ----------
 // v6 changes (converted-file load failure): (1) handlers are attached
 // BEFORE src and the <video> element is explicitly reset
 // (removeAttribute("src") + load()) before a converted blob is
